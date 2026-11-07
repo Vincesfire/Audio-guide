@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Guide Audio Wikipedia Avancé</title>
+    <title>Guide Audio Touristique 2 Minutes</title>
     <style>
         * {
             box-sizing: border-box;
@@ -202,7 +202,7 @@
 
     async function fetchWikipediaData(lat, lon) {
         try {
-            // 1. Recherche de l'article le plus proche (rayon de 3000m pour maximiser les chances)
+            // Recherche de l'article le plus proche (rayon de 3000m)
             const geosearchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=3000&gslimit=1&format=json&origin=*`;
             const geoResponse = await fetch(geosearchUrl);
             const geoData = await geoResponse.json();
@@ -216,17 +216,16 @@
             const pageId = geoData.query.geosearch[0].pageid;
             const title = geoData.query.geosearch[0].title;
 
-            setStatus(`Lieu trouvé : "${title}". Chargement des détails et de l'image...`);
+            setStatus(`Lieu trouvé : "${title}". Chargement du format long (2 min)...`);
             document.getElementById('article-title').innerText = title;
 
-            // 2. Récupération d'un contenu plus détaillé (plusieurs paragraphes) + Image de l'article (pageimages)
+            // Récupération d'un contenu détaillé + image principale
             const detailUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=0&explaintext=1&piprop=original&pageids=${pageId}&format=json&origin=*`;
             const detailResponse = await fetch(detailUrl);
             const detailData = await detailResponse.json();
 
             const page = detailData.query.pages[pageId];
             
-            // Gestion de l'image si elle existe
             if (page.original && page.original.source) {
                 const imgElement = document.getElementById('place-image');
                 imgElement.src = page.original.source;
@@ -241,17 +240,17 @@
                 return;
             }
 
-            // Nettoyage et limitation pour cibler environ 2 minutes de lecture (~300 mots)
+            // Filtrage pour viser une lecture d'environ 2 minutes (~350 à 400 mots / 5 premiers paragraphes)
             const paragraphs = fullText.split('\n').filter(p => p.trim().length > 0);
-            textToSpeak = paragraphs.slice(0, 3).join(" "); // Prend les 3 premiers paragraphes riches
+            textToSpeak = paragraphs.slice(0, 5).join(" ");
 
-            // Affichage du texte
+            // Affichage du texte à l'écran
             const outputDiv = document.getElementById('output');
             outputDiv.innerText = textToSpeak;
             outputDiv.style.display = 'block';
 
             setStatus("Lecture audio en cours...");
-            speakText("Voici la découverte du lieu : " + title + ". " + textToSpeak);
+            speakText(`Voici la présentation détaillée du lieu : ${title}. ${textToSpeak}`);
 
         } catch (err) {
             console.error(err);
@@ -268,7 +267,6 @@
         currentUtterance = new SpeechSynthesisUtterance(text);
         currentUtterance.lang = 'fr-FR';
         
-        // Appliquer la vitesse sélectionnée
         const speedSelect = document.getElementById('speed-select');
         currentUtterance.rate = parseFloat(speedSelect.value);
 
@@ -292,7 +290,6 @@
 
     function changeSpeed() {
         if (synth.speaking && !synth.paused && currentUtterance) {
-            // Pour changer la vitesse en direct, on relance la synthèse (optionnel mais fluide)
             const speed = parseFloat(document.getElementById('speed-select').value);
             currentUtterance.rate = speed;
         }
