@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Guide Audio Touristique Multi-Sources</title>
+    <title>Guide Audio Touristique</title>
     <style>
         * {
             box-sizing: border-box;
@@ -264,6 +264,37 @@
     let combinedContent = [];
     let currentChunkIndex = 0;
     let currentTitle = "";
+    let availableVoices = [];
+
+    // Chargement dynamique des meilleures voix du téléphone
+    function loadVoices() {
+        availableVoices = synth.getVoices();
+    }
+    loadVoices();
+    if (speechSynthesis.onvoiceschanged !== undefined) {
+        speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    // Sélection intelligente de la meilleure voix française (Google / Premium / Natural)
+    function getBestFrenchVoice() {
+        if (availableVoices.length === 0) {
+            availableVoices = synth.getVoices();
+        }
+
+        const frVoices = availableVoices.filter(v => v.lang.startsWith('fr'));
+        if (frVoices.length === 0) return null;
+
+        // Priorité aux voix de haute qualité (Natural, Premium, Google, Online)
+        const premiumVoice = frVoices.find(v => 
+            v.name.includes('Google') || 
+            v.name.includes('Natural') || 
+            v.name.includes('Premium') || 
+            v.name.includes('Enhanced') ||
+            v.name.includes('Améliorée')
+        );
+
+        return premiumVoice || frVoices[0];
+    }
 
     function setStatus(text) {
         document.getElementById('status').innerText = text;
@@ -302,7 +333,7 @@
             (position) => {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
-                setStatus(`Position trouvée. Croisement des sources (Wikipédia, Wikivoyage, Wikidata)...`);
+                setStatus(`Position trouvée. Croisement des sources...`);
                 fetchMultiSourceByCoords(lat, lon);
             },
             (error) => {
@@ -327,10 +358,8 @@
         fetchMultiSourceBySearch(query);
     }
 
-    // Récupération multi-sources via Coordonnées GPS
     async function fetchMultiSourceByCoords(lat, lon) {
         try {
-            // 1. Wikipédia géolocalisé
             const wikiGeoUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=3000&gslimit=1&format=json&origin=*`;
             const res = await fetch(wikiGeoUrl);
             const data = await res.json();
@@ -352,7 +381,6 @@
         }
     }
 
-    // Récupération multi-sources via Texte
     async function fetchMultiSourceBySearch(queryText) {
         try {
             const searchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(queryText)}&srlimit=1&format=json&origin=*`;
@@ -376,36 +404,29 @@
         }
     }
 
-    // Chargement et fusion des données des 3 sources (Wikipédia + Wikivoyage + Wikidata)
     async function loadMultiSourceDetails(title, pageId) {
         try {
             currentTitle = title;
             setStatus(`Fusion des données pour "${currentTitle}"...`);
             document.getElementById('article-title').innerText = currentTitle;
 
-            // 1. Appel source principale : Wikipédia (texte détaillé + image)
             const wikiDetailUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=0&explaintext=1&piprop=original&pageids=${pageId}&format=json&origin=*`;
             const wikiPromise = fetch(wikiDetailUrl).then(r => r.json());
 
-            // 2. Appel source secondaire : Wikivoyage (guide touristique pratique et culturel)
             const voyUrl = `https://fr.wikivoyage.org/w/api.php?action=query&prop=extracts&exintro=0&explaintext=1&titles=${encodeURIComponent(title)}&format=json&origin=*`;
             const voyPromise = fetch(voyUrl).then(r => r.json()).catch(() => null);
 
-            // 3. Appel source tertiaire : Wikidata / Wikipedia Résumé court (description alternative)
             const wikidataUrl = `https://fr.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
             const wikiSummaryPromise = fetch(wikidataUrl).then(r => r.json()).catch(() => null);
 
-            // Attente des trois requêtes en parallèle
             const [wikiData, voyData, summaryData] = await Promise.all([wikiPromise, voyPromise, wikiSummaryPromise]);
 
-            // Lien Wikipédia officiel
             const wikiUrl = `https://fr.wikipedia.org/?curid=${pageId}`;
             const linkElement = document.getElementById('wikipedia-link');
             linkElement.href = wikiUrl;
             linkElement.innerText = `📖 Lire "${currentTitle}" sur Wikipédia`;
             document.getElementById('wikipedia-link-container').style.display = 'block';
 
-            // Image principale
             const page = wikiData.query.pages[pageId];
             if (page.original && page.original.source) {
                 const imgElement = document.getElementById('place-image');
@@ -413,15 +434,12 @@
                 document.getElementById('place-image-container').style.display = 'block';
             }
 
-            // Construction de la base de texte combinée et structurée
             combinedContent = [];
 
-            // A. Ajout du résumé contextuel (Source 3)
             if (summaryData && summaryData.extract) {
                 combinedContent.push(summaryData.extract);
             }
 
-            // B. Ajout des informations pratiques et touristiques de Wikivoyage (Source 2) s'il y en a
             if (voyData && voyData.query && voyData.query.pages) {
                 const voyPages = voyData.query.pages;
                 for (let id in voyPages) {
@@ -431,7 +449,6 @@
                 }
             }
 
-            // C. Ajout des paragraphes historiques et détaillés de Wikipédia (Source 1)
             let wikiFullText = page.extract || "";
             if (wikiFullText.trim() !== "") {
                 const wikiParagraphs = wikiFullText.split('\n').filter(p => p.trim().length > 0);
@@ -447,7 +464,6 @@
             document.getElementById('sources-badge').innerText = "📚 Synthèse multi-sources : Wikipédia, Wikivoyage & Wikidata";
             currentChunkIndex = 0;
 
-            // Premier bloc audio (~2 minutes / 5 premiers blocs)
             const firstBatch = combinedContent.slice(currentChunkIndex, currentChunkIndex + 5).join(" ");
             currentChunkIndex += 5;
 
@@ -460,7 +476,7 @@
             }
 
             setStatus("Lecture audio en cours...");
-            speakText(`Voici la présentation complète de ${currentTitle}. ${firstBatch}`);
+            speakText(firstBatch);
 
         } catch (err) {
             console.error(err);
@@ -469,7 +485,6 @@
         }
     }
 
-    // Bouton En savoir plus (+2 min de complément sans redite)
     function loadMoreDetails() {
         if (currentChunkIndex >= combinedContent.length) {
             setStatus("Vous avez écouté l'intégralité des détails disponibles.");
@@ -489,7 +504,7 @@
         }
 
         setStatus("Lecture de la suite en cours...");
-        speakText(`Poursuivons la visite de ${currentTitle}. ${nextBatch}`);
+        speakText(nextBatch);
     }
 
     function speakText(text) {
@@ -500,6 +515,12 @@
         currentUtterance = new SpeechSynthesisUtterance(text);
         currentUtterance.lang = 'fr-FR';
         
+        // Attribution de la meilleure voix naturelle trouvée
+        const bestVoice = getBestFrenchVoice();
+        if (bestVoice) {
+            currentUtterance.voice = bestVoice;
+        }
+
         const speedSelect = document.getElementById('speed-select');
         currentUtterance.rate = parseFloat(speedSelect.value);
 
