@@ -155,7 +155,6 @@
             padding: 0 4px;
             word-break: break-word;
         }
-        /* Barre de progression et minuterie */
         #progress-container {
             margin: 12px 0 4px 0;
             display: none;
@@ -278,7 +277,6 @@
 
     <div id="status">Choisissez une méthode pour démarrer.</div>
     
-    <!-- Zone de progression et minuterie -->
     <div id="progress-container">
         <div class="progress-bar-bg">
             <div id="progress-fill" class="progress-bar-fill"></div>
@@ -312,7 +310,6 @@
     let currentTitle = "";
     let availableVoices = [];
 
-    // Variables pour la gestion du temps et de la progression
     let speechStartTime = 0;
     let speechDurationMs = 0;
     let progressInterval = null;
@@ -388,8 +385,8 @@
             (position) => {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
-                setStatus(`Position trouvée. Analyse multi-sources...`);
-                fetchMultiSourceByCoords(lat, lon);
+                setStatus(`Position trouvée. Analyse complète de l'article...`);
+                fetchFullArticleByCoords(lat, lon);
             },
             (error) => {
                 document.getElementById('listen-btn').disabled = false;
@@ -409,11 +406,11 @@
 
         inputField.blur();
         resetUI();
-        setStatus(`Recherche multi-sources pour "${query}"...`);
-        fetchMultiSourceBySearch(query);
+        setStatus(`Recherche complète pour "${query}"...`);
+        fetchFullArticleBySearch(query);
     }
 
-    async function fetchMultiSourceByCoords(lat, lon) {
+    async function fetchFullArticleByCoords(lat, lon) {
         try {
             const wikiGeoUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=3000&gslimit=1&format=json&origin=*`;
             const res = await fetch(wikiGeoUrl);
@@ -427,7 +424,7 @@
 
             const pageId = data.query.geosearch[0].pageid;
             const title = data.query.geosearch[0].title;
-            loadMultiSourceDetails(title, pageId);
+            loadFullArticleDetails(title, pageId);
 
         } catch (err) {
             console.error(err);
@@ -436,7 +433,7 @@
         }
     }
 
-    async function fetchMultiSourceBySearch(queryText) {
+    async function fetchFullArticleBySearch(queryText) {
         try {
             const searchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(queryText)}&srlimit=1&format=json&origin=*`;
             const res = await fetch(searchUrl);
@@ -450,7 +447,7 @@
 
             const pageId = data.query.search[0].pageid;
             const title = data.query.search[0].title;
-            loadMultiSourceDetails(title, pageId);
+            loadFullArticleDetails(title, pageId);
 
         } catch (err) {
             console.error(err);
@@ -459,12 +456,14 @@
         }
     }
 
-    async function loadMultiSourceDetails(title, pageId) {
+    // Analyse approfondie de l'article complet (tous les chapitres)
+    async function loadFullArticleDetails(title, pageId) {
         try {
             currentTitle = title;
-            setStatus(`Traitement et nettoyage des données pour "${currentTitle}"...`);
+            setStatus(`Analyse intégrale des chapitres de "${currentTitle}"...`);
             document.getElementById('article-title').innerText = currentTitle;
 
+            // exintro=0 récupère TOUT l'article (toutes les sections et chapitres) en texte brut
             const wikiDetailUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=0&explaintext=1&piprop=original&pageids=${pageId}&format=json&origin=*`;
             const wikiPromise = fetch(wikiDetailUrl).then(r => r.json());
 
@@ -503,10 +502,14 @@
                 rawParagraphs = rawParagraphs.concat(wikiParagraphs);
             }
 
+            // Filtrage intelligent anti-doublons sur l'ensemble de l'article complet
             let seenSentences = new Set();
             combinedContent = [];
 
             for (let para of rawParagraphs) {
+                // Ignore les titres de sections trop courts (ex: "Références", "Voir aussi", "Notes")
+                if (para.trim().length < 40 && (para.includes("== ") || para.length < 30)) continue;
+
                 let sentences = para.split(/(?<=[.!?])\s+/);
                 let uniqueParaSentences = [];
 
@@ -514,7 +517,7 @@
                     let cleanSentence = sentence.trim();
                     let normalized = cleanSentence.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
 
-                    if (cleanSentence.length > 15 && !seenSentences.has(normalized)) {
+                    if (cleanSentence.length > 20 && !seenSentences.has(normalized)) {
                         seenSentences.add(normalized);
                         uniqueParaSentences.push(cleanSentence);
                     }
@@ -531,11 +534,12 @@
                 return;
             }
 
-            document.getElementById('sources-badge').innerText = "📚 Synthèse optimisée sans doublons";
+            document.getElementById('sources-badge').innerText = "📚 Analyse exhaustive de tous les chapitres";
             currentChunkIndex = 0;
 
+            // Détermination du volume de départ selon la durée sélectionnée (2 min ~ 5 blocs, 4 min ~ 11 blocs, 6 min ~ 17 blocs)
             const durationMinutes = parseInt(document.getElementById('duration-select').value);
-            const paragraphsCount = Math.max(3, durationMinutes * 2);
+            const paragraphsCount = Math.max(4, Math.round(durationMinutes * 2.8));
 
             const initialBatch = combinedContent.slice(currentChunkIndex, currentChunkIndex + paragraphsCount).join(" ");
             currentChunkIndex += paragraphsCount;
@@ -548,25 +552,25 @@
                 document.getElementById('more-btn').style.display = 'block';
             }
 
-            setStatus(`Lecture audio en cours...`);
+            setStatus(`Lecture audio en cours (${durationMinutes} min)...`);
             speakText(initialBatch);
 
         } catch (err) {
             console.error(err);
-            setStatus("Erreur lors de la compilation des sources.");
+            setStatus("Erreur lors de l'analyse complète de l'article.");
             document.getElementById('listen-btn').disabled = false;
         }
     }
 
     function loadMoreDetails() {
         if (currentChunkIndex >= combinedContent.length) {
-            setStatus("Vous avez écouté l'intégralité des détails disponibles.");
+            setStatus("Vous avez écouté l'intégralité des chapitres disponibles.");
             document.getElementById('more-btn').style.display = 'none';
             return;
         }
 
-        const nextBatch = combinedContent.slice(currentChunkIndex, currentChunkIndex + 5).join(" ");
-        currentChunkIndex += 5;
+        const nextBatch = combinedContent.slice(currentChunkIndex, currentChunkIndex + 6).join(" ");
+        currentChunkIndex += 6;
 
         const outputDiv = document.getElementById('output');
         outputDiv.innerText += "\n\n" + nextBatch;
@@ -576,7 +580,7 @@
             document.getElementById('more-btn').style.display = 'none';
         }
 
-        setStatus("Lecture de la suite en cours...");
+        setStatus("Lecture de la suite des chapitres...");
         speakText(nextBatch);
     }
 
@@ -597,13 +601,10 @@
         const speechRate = parseFloat(speedSelect.value);
         currentUtterance.rate = speechRate;
 
-        // Calcul dynamique de la durée estimée en fonction du nombre de mots et de la vitesse
         const wordCount = text.split(/\s+/).length;
-        // Vitesse de parole normale ~ 150 mots par minute à 1.0x
         const baseDurationSeconds = (wordCount / 150) * 60;
         speechDurationMs = (baseDurationSeconds / speechRate) * 1000;
 
-        // Affichage de la minuterie et de la barre
         document.getElementById('total-time').innerText = formatTime(speechDurationMs / 1000);
         document.getElementById('current-time').innerText = "0:00";
         document.getElementById('progress-fill').style.width = "0%";
@@ -654,7 +655,6 @@
         if (synth.speaking && !synth.paused && currentUtterance) {
             const speed = parseFloat(document.getElementById('speed-select').value);
             currentUtterance.rate = speed;
-            // Recalculer la durée restante si la vitesse change en cours de route
         }
     }
 
@@ -663,13 +663,13 @@
             if (synth.paused) {
                 synth.resume();
                 isPausedState = false;
-                speechStartTime = Date.now(); // Réinitialiser le point de départ du chrono après reprise
+                speechStartTime = Date.now();
                 document.getElementById('pause-btn').innerText = "Pause";
                 setStatus("Lecture audio en cours...");
             } else {
                 synth.pause();
                 isPausedState = true;
-                pauseElapsedMs += Date.now() - speechStartTime; // Mémoriser le temps écoulé avant la pause
+                pauseElapsedMs += Date.now() - speechStartTime;
                 document.getElementById('pause-btn').innerText = "Reprendre";
                 setStatus("Lecture en pause.");
             }
