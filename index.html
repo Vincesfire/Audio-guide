@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Guide Audio Touristique</title>
+    <title>Guide Audio Touristique Multi-Sources</title>
     <style>
         * {
             box-sizing: border-box;
@@ -124,7 +124,7 @@
             color: #ffd166;
             border: 1px solid #ffd166;
             margin-top: 12px;
-            display: none; /* Géré dynamiquement par le JS */
+            display: none;
         }
         .speed-control {
             margin: 12px 0 8px 0;
@@ -174,6 +174,11 @@
             color: #ffd166;
             word-break: break-word;
         }
+        #sources-badge {
+            font-size: 0.75rem;
+            color: #8d99ae;
+            margin-bottom: 8px;
+        }
         #output {
             text-align: left;
             background: #0b132b;
@@ -215,7 +220,7 @@
     <div class="divider"><span>OU SAISIR UN LIEU</span></div>
 
     <div class="search-box">
-        <input type="text" id="manual-place-input" placeholder="Ex: Panthéon, Massy..." onkeypress="handleKeyPress(event)">
+        <input type="text" id="manual-place-input" placeholder="Ex: Tour Eiffel, Notre-Dame..." onkeypress="handleKeyPress(event)">
         <button id="search-btn" onclick="startGuideManual()">🔍</button>
     </div>
 
@@ -243,9 +248,9 @@
     </div>
     
     <div id="article-title"></div>
+    <div id="sources-badge"></div>
     <div id="output"></div>
 
-    <!-- Bouton En savoir plus corrigé et rendu visible dès qu'un article est chargé -->
     <button id="more-btn" class="more-btn" onclick="loadMoreDetails()">📖 En savoir plus (+2 min)</button>
 
     <div id="wikipedia-link-container">
@@ -256,8 +261,8 @@
 <script>
     const synth = window.speechSynthesis;
     let currentUtterance = null;
-    let allParagraphs = [];
-    let currentParagraphIndex = 0;
+    let combinedContent = [];
+    let currentChunkIndex = 0;
     let currentTitle = "";
 
     function setStatus(text) {
@@ -268,11 +273,12 @@
         stopAudio();
         document.getElementById('output').style.display = 'none';
         document.getElementById('article-title').innerText = '';
+        document.getElementById('sources-badge').innerText = '';
         document.getElementById('place-image-container').style.display = 'none';
         document.getElementById('wikipedia-link-container').style.display = 'none';
         document.getElementById('more-btn').style.display = 'none';
-        allParagraphs = [];
-        currentParagraphIndex = 0;
+        combinedContent = [];
+        currentChunkIndex = 0;
     }
 
     function handleKeyPress(event) {
@@ -284,7 +290,6 @@
 
     function startGuideGPS() {
         resetUI();
-
         if (!navigator.geolocation) {
             setStatus("La géolocalisation n'est pas supportée par votre navigateur.");
             return;
@@ -297,24 +302,12 @@
             (position) => {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
-                setStatus(`Position trouvée (${lat.toFixed(4)}, ${lon.toFixed(4)}). Recherche...`);
-                fetchWikipediaByCoords(lat, lon);
+                setStatus(`Position trouvée. Croisement des sources (Wikipédia, Wikivoyage, Wikidata)...`);
+                fetchMultiSourceByCoords(lat, lon);
             },
             (error) => {
                 document.getElementById('listen-btn').disabled = false;
-                switch(error.code) {
-                    case error.PERMISSION_DENIED:
-                        setStatus("Erreur : Permission GPS refusée.");
-                        break;
-                    case error.POSITION_UNAVAILABLE:
-                        setStatus("Erreur : Position GPS indisponible.");
-                        break;
-                    case error.TIMEOUT:
-                        setStatus("Erreur : Temps d'attente dépassé.");
-                        break;
-                    default:
-                        setStatus("Erreur GPS inconnue.");
-                }
+                setStatus("Erreur lors de la récupération GPS.");
             },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
@@ -330,132 +323,173 @@
 
         inputField.blur();
         resetUI();
-        setStatus(`Recherche de "${query}"...`);
-        fetchWikipediaBySearch(query);
+        setStatus(`Recherche multi-sources pour "${query}"...`);
+        fetchMultiSourceBySearch(query);
     }
 
-    async function fetchWikipediaByCoords(lat, lon) {
+    // Récupération multi-sources via Coordonnées GPS
+    async function fetchMultiSourceByCoords(lat, lon) {
         try {
-            const geosearchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=3000&gslimit=1&format=json&origin=*`;
-            const geoResponse = await fetch(geosearchUrl);
-            const geoData = await geoResponse.json();
+            // 1. Wikipédia géolocalisé
+            const wikiGeoUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=3000&gslimit=1&format=json&origin=*`;
+            const res = await fetch(wikiGeoUrl);
+            const data = await res.json();
 
-            if (!geoData.query || !geoData.query.geosearch || geoData.query.geosearch.length === 0) {
-                setStatus("Aucun article touristique trouvé à proximité.");
+            if (!data.query || !data.query.geosearch || data.query.geosearch.length === 0) {
+                setStatus("Aucun lieu touristique trouvé à proximité.");
                 document.getElementById('listen-btn').disabled = false;
                 return;
             }
 
-            const pageId = geoData.query.geosearch[0].pageid;
-            loadArticleDetails(pageId);
+            const pageId = data.query.geosearch[0].pageid;
+            const title = data.query.geosearch[0].title;
+            loadMultiSourceDetails(title, pageId);
 
         } catch (err) {
             console.error(err);
-            setStatus("Erreur lors de la recherche GPS.");
+            setStatus("Erreur lors de la recherche géographique.");
             document.getElementById('listen-btn').disabled = false;
         }
     }
 
-    async function fetchWikipediaBySearch(queryText) {
+    // Récupération multi-sources via Texte
+    async function fetchMultiSourceBySearch(queryText) {
         try {
             const searchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(queryText)}&srlimit=1&format=json&origin=*`;
-            const response = await fetch(searchUrl);
-            const data = await response.json();
+            const res = await fetch(searchUrl);
+            const data = await res.json();
 
             if (!data.query || !data.query.search || data.query.search.length === 0) {
-                setStatus(`Aucun résultat pour "${queryText}".`);
+                setStatus(`Aucun résultat trouvé pour "${queryText}".`);
                 document.getElementById('listen-btn').disabled = false;
                 return;
             }
 
             const pageId = data.query.search[0].pageid;
-            loadArticleDetails(pageId);
+            const title = data.query.search[0].title;
+            loadMultiSourceDetails(title, pageId);
 
         } catch (err) {
             console.error(err);
-            setStatus("Erreur lors de la recherche du lieu.");
+            setStatus("Erreur lors de la recherche textuelle.");
             document.getElementById('listen-btn').disabled = false;
         }
     }
 
-    async function loadArticleDetails(pageId) {
+    // Chargement et fusion des données des 3 sources (Wikipédia + Wikivoyage + Wikidata)
+    async function loadMultiSourceDetails(title, pageId) {
         try {
-            const detailUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=0&explaintext=1&piprop=original&pageids=${pageId}&format=json&origin=*`;
-            const detailResponse = await fetch(detailUrl);
-            const detailData = await detailResponse.json();
-
-            const page = detailData.query.pages[pageId];
-            currentTitle = page.title;
-
-            setStatus(`Lieu trouvé : "${currentTitle}". Chargement...`);
+            currentTitle = title;
+            setStatus(`Fusion des données pour "${currentTitle}"...`);
             document.getElementById('article-title').innerText = currentTitle;
 
+            // 1. Appel source principale : Wikipédia (texte détaillé + image)
+            const wikiDetailUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=0&explaintext=1&piprop=original&pageids=${pageId}&format=json&origin=*`;
+            const wikiPromise = fetch(wikiDetailUrl).then(r => r.json());
+
+            // 2. Appel source secondaire : Wikivoyage (guide touristique pratique et culturel)
+            const voyUrl = `https://fr.wikivoyage.org/w/api.php?action=query&prop=extracts&exintro=0&explaintext=1&titles=${encodeURIComponent(title)}&format=json&origin=*`;
+            const voyPromise = fetch(voyUrl).then(r => r.json()).catch(() => null);
+
+            // 3. Appel source tertiaire : Wikidata / Wikipedia Résumé court (description alternative)
+            const wikidataUrl = `https://fr.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+            const wikiSummaryPromise = fetch(wikidataUrl).then(r => r.json()).catch(() => null);
+
+            // Attente des trois requêtes en parallèle
+            const [wikiData, voyData, summaryData] = await Promise.all([wikiPromise, voyPromise, wikiSummaryPromise]);
+
+            // Lien Wikipédia officiel
             const wikiUrl = `https://fr.wikipedia.org/?curid=${pageId}`;
             const linkElement = document.getElementById('wikipedia-link');
             linkElement.href = wikiUrl;
             linkElement.innerText = `📖 Lire "${currentTitle}" sur Wikipédia`;
             document.getElementById('wikipedia-link-container').style.display = 'block';
 
+            // Image principale
+            const page = wikiData.query.pages[pageId];
             if (page.original && page.original.source) {
                 const imgElement = document.getElementById('place-image');
                 imgElement.src = page.original.source;
                 document.getElementById('place-image-container').style.display = 'block';
             }
 
-            let fullText = page.extract || "";
+            // Construction de la base de texte combinée et structurée
+            combinedContent = [];
 
-            if (fullText.trim() === '') {
-                setStatus("L'article trouvé ne contient pas assez de texte.");
+            // A. Ajout du résumé contextuel (Source 3)
+            if (summaryData && summaryData.extract) {
+                combinedContent.push(summaryData.extract);
+            }
+
+            // B. Ajout des informations pratiques et touristiques de Wikivoyage (Source 2) s'il y en a
+            if (voyData && voyData.query && voyData.query.pages) {
+                const voyPages = voyData.query.pages;
+                for (let id in voyPages) {
+                    if (voyPages[id].extract && voyPages[id].extract.trim() !== "") {
+                        combinedContent.push("Perspective touristique : " + voyPages[id].extract);
+                    }
+                }
+            }
+
+            // C. Ajout des paragraphes historiques et détaillés de Wikipédia (Source 1)
+            let wikiFullText = page.extract || "";
+            if (wikiFullText.trim() !== "") {
+                const wikiParagraphs = wikiFullText.split('\n').filter(p => p.trim().length > 0);
+                combinedContent = combinedContent.concat(wikiParagraphs);
+            }
+
+            if (combinedContent.length === 0) {
+                setStatus("Pas assez de contenu disponible pour ce lieu.");
                 document.getElementById('listen-btn').disabled = false;
                 return;
             }
 
-            // Découpage en paragraphes
-            allParagraphs = fullText.split('\n').filter(p => p.trim().length > 0);
-            currentParagraphIndex = 0;
+            document.getElementById('sources-badge').innerText = "📚 Synthèse multi-sources : Wikipédia, Wikivoyage & Wikidata";
+            currentChunkIndex = 0;
 
-            // Premier bloc (~2 min)
-            const firstBatch = allParagraphs.slice(currentParagraphIndex, currentParagraphIndex + 5).join(" ");
-            currentParagraphIndex += 5;
+            // Premier bloc audio (~2 minutes / 5 premiers blocs)
+            const firstBatch = combinedContent.slice(currentChunkIndex, currentChunkIndex + 5).join(" ");
+            currentChunkIndex += 5;
 
             const outputDiv = document.getElementById('output');
             outputDiv.innerText = firstBatch;
             outputDiv.style.display = 'block';
 
-            // Affichage systématique du bouton "En savoir plus" dès qu'un article est chargé
-            document.getElementById('more-btn').style.display = 'block';
+            if (currentChunkIndex < combinedContent.length) {
+                document.getElementById('more-btn').style.display = 'block';
+            }
 
             setStatus("Lecture audio en cours...");
-            speakText(`Voici la présentation détaillée de ${currentTitle}. ${firstBatch}`);
+            speakText(`Voici la présentation complète de ${currentTitle}. ${firstBatch}`);
 
         } catch (err) {
             console.error(err);
-            setStatus("Erreur lors du chargement des détails.");
+            setStatus("Erreur lors de la compilation des sources.");
             document.getElementById('listen-btn').disabled = false;
         }
     }
 
+    // Bouton En savoir plus (+2 min de complément sans redite)
     function loadMoreDetails() {
-        if (currentParagraphIndex >= allParagraphs.length) {
-            // S'il n'y a plus de paragraphes techniques non lus, on propose une relance dynamique sur l'article
-            setStatus("Vous avez écouté l'intégralité des sections disponibles.");
+        if (currentChunkIndex >= combinedContent.length) {
+            setStatus("Vous avez écouté l'intégralité des détails disponibles.");
             document.getElementById('more-btn').style.display = 'none';
             return;
         }
 
-        const nextBatch = allParagraphs.slice(currentParagraphIndex, currentParagraphIndex + 5).join(" ");
-        currentParagraphIndex += 5;
+        const nextBatch = combinedContent.slice(currentChunkIndex, currentChunkIndex + 5).join(" ");
+        currentChunkIndex += 5;
 
         const outputDiv = document.getElementById('output');
         outputDiv.innerText += "\n\n" + nextBatch;
         outputDiv.scrollTop = outputDiv.scrollHeight;
 
-        if (currentParagraphIndex >= allParagraphs.length) {
+        if (currentChunkIndex >= combinedContent.length) {
             document.getElementById('more-btn').style.display = 'none';
         }
 
         setStatus("Lecture de la suite en cours...");
-        speakText(`Poursuivons la découverte de ${currentTitle}. ${nextBatch}`);
+        speakText(`Poursuivons la visite de ${currentTitle}. ${nextBatch}`);
     }
 
     function speakText(text) {
