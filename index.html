@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Guide Audio Wikipedia GPS</title>
+    <title>Guide Audio Wikipedia Avancé</title>
     <style>
         * {
             box-sizing: border-box;
@@ -22,7 +22,7 @@
         }
         .card {
             background: white;
-            padding: 30px;
+            padding: 25px;
             border-radius: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.08);
             max-width: 500px;
@@ -30,22 +30,22 @@
             text-align: center;
         }
         h1 {
-            font-size: 1.6rem;
-            margin-bottom: 20px;
+            font-size: 1.5rem;
+            margin-bottom: 15px;
             color: #1d1d1f;
         }
         button {
             background-color: #0071e3;
             color: white;
             border: none;
-            padding: 16px 32px;
-            font-size: 1.1rem;
+            padding: 14px 24px;
+            font-size: 1.05rem;
             font-weight: 600;
             border-radius: 30px;
             cursor: pointer;
             transition: background-color 0.2s, transform 0.1s;
             width: 100%;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
         }
         button:active {
             transform: scale(0.98);
@@ -57,7 +57,7 @@
         .controls {
             display: flex;
             gap: 10px;
-            margin-top: 10px;
+            margin-top: 5px;
         }
         .secondary-btn {
             background-color: #e8e8ed;
@@ -65,197 +65,15 @@
             padding: 10px;
             font-size: 0.9rem;
         }
-        #status {
-            margin: 15px 0;
-            font-size: 0.95rem;
-            color: #86868b;
-            min-height: 24px;
-        }
-        #article-title {
-            font-weight: bold;
-            font-size: 1.2rem;
+        .speed-control {
             margin: 15px 0 10px 0;
-            color: #0071e3;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            color: #515154;
         }
-        #output {
-            text-align: left;
-            background: #f5f5f7;
-            padding: 15px;
-            border-radius: 12px;
-            font-size: 0.95rem;
-            line-height: 1.5;
-            max-height: 250px;
-            overflow-y: auto;
-            margin-top: 15px;
-            display: none;
-        }
-    </style>
-</head>
-<body>
-
-<div class="card">
-    <h1>Guide Audio Wikipedia</h1>
-    
-    <button id="listen-btn" onclick="startGuide()">📍 Écouter le lieu actuel</button>
-    
-    <div class="controls">
-        <button id="pause-btn" class="secondary-btn" onclick="pauseAudio()" disabled>Pause</button>
-        <button id="stop-btn" class="secondary-btn" onclick="stopAudio()" disabled>Arrêter</button>
-    </div>
-
-    <div id="status">Cliquez sur le bouton pour détecter votre position.</div>
-    <div id="article-title"></div>
-    <div id="output"></div>
-</div>
-
-<script>
-    const synth = window.speechSynthesis;
-    let currentUtterance = null;
-
-    function setStatus(text) {
-        document.getElementById('status').innerText = text;
-    }
-
-    function startGuide() {
-        stopAudio();
-        document.getElementById('output').style.display = 'none';
-        document.getElementById('article-title').innerText = '';
-
-        if (!navigator.geolocation) {
-            setStatus("La géolocalisation n'est pas supportée par votre navigateur.");
-            return;
-        }
-
-        setStatus("Recherche de votre position GPS...");
-        document.getElementById('listen-btn').disabled = true;
-
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const lat = position.coords.latitude;
-                const lon = position.coords.longitude;
-                setStatus(`Position trouvée (${lat.toFixed(4)}, ${lon.toFixed(4)}). Recherche de l'article Wikipedia le plus proche...`);
-                fetchWikipediaArticle(lat, lon);
-            },
-            (error) => {
-                document.getElementById('listen-btn').disabled = false;
-                switch(error.code) {
-                    case error.PERMISSION_DENIED:
-                        setStatus("Erreur : Permission GPS refusée.");
-                        break;
-                    case error.POSITION_UNAVAILABLE:
-                        setStatus("Erreur : Position GPS indisponible.");
-                        break;
-                    case error.TIMEOUT:
-                        setStatus("Erreur : Temps d'attente dépassé pour le GPS.");
-                        break;
-                    default:
-                        setStatus("Erreur GPS inconnue.");
-                }
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-    }
-
-    async function fetchWikipediaArticle(lat, lon) {
-        try {
-            // 1. Recherche des articles Wikipedia situés à proximité des coordonnées GPS (rayon de 2000m)
-            const geosearchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=2000&gslimit=1&format=json&origin=*`;
-            const geoResponse = await fetch(geosearchUrl);
-            const geoData = await geoResponse.json();
-
-            if (!geoData.query || !geoData.query.geosearch || geoData.query.geosearch.length === 0) {
-                setStatus("Aucun article Wikipedia d'intérêt touristique trouvé à proximité immédiate.");
-                document.getElementById('listen-btn').disabled = false;
-                return;
-            }
-
-            const pageId = geoData.query.geosearch[0].pageid;
-            const title = geoData.query.geosearch[0].title;
-
-            setStatus(`Article trouvé : "${title}". Chargement du contenu...`);
-            document.getElementById('article-title').innerText = title;
-
-            // 2. Récupération du résumé (extract) de l'article Wikipedia trouvé
-            const extractUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&pageids=${pageId}&format=json&origin=*`;
-            const extractResponse = await fetch(extractUrl);
-            const extractData = await extractResponse.json();
-
-            const page = extractData.query.pages[pageId];
-            const text = page.extract;
-
-            if (!text || text.trim() === '') {
-                setStatus("L'article trouvé ne contient pas de texte lisible.");
-                document.getElementById('listen-btn').disabled = false;
-                return;
-            }
-
-            // Affichage du texte sur la page
-            const outputDiv = document.getElementById('output');
-            outputDiv.innerText = text;
-            outputDiv.style.display = 'block';
-
-            setStatus("Lecture audio en cours...");
-            speakText(title + ". " + text);
-
-        } catch (err) {
-            console.error(err);
-            setStatus("Erreur lors de la récupération des données Wikipedia.");
-            document.getElementById('listen-btn').disabled = false;
-        }
-    }
-
-    function speakText(text) {
-        if (synth.speaking) {
-            synth.cancel();
-        }
-
-        currentUtterance = new SpeechSynthesisUtterance(text);
-        currentUtterance.lang = 'fr-FR';
-        currentUtterance.rate = 1.0;
-
-        currentUtterance.onend = () => {
-            setStatus("Lecture terminée.");
-            document.getElementById('listen-btn').disabled = false;
-            document.getElementById('pause-btn').disabled = true;
-            document.getElementById('stop-btn').disabled = true;
-        };
-
-        currentUtterance.onerror = (e) => {
-            console.error(e);
-            setStatus("Erreur lors de la lecture audio.");
-            document.getElementById('listen-btn').disabled = false;
-        };
-
-        synth.speak(currentUtterance);
-        document.getElementById('pause-btn').disabled = false;
-        document.getElementById('stop-btn').disabled = false;
-    }
-
-    function pauseAudio() {
-        if (synth.speaking) {
-            if (synth.paused) {
-                synth.resume();
-                document.getElementById('pause-btn').innerText = "Pause";
-                setStatus("Lecture audio en cours...");
-            } else {
-                synth.pause();
-                document.getElementById('pause-btn').innerText = "Reprendre";
-                setStatus("Lecture en pause.");
-            }
-        }
-    }
-
-    function stopAudio() {
-        if (synth.speaking || synth.paused) {
-            synth.cancel();
-            setStatus("Lecture arrêtée.");
-            document.getElementById('listen-btn').disabled = false;
-            document.getElementById('pause-btn').disabled = true;
-            document.getElementById('stop-btn').disabled = true;
-            document.getElementById('pause-btn').innerText = "Pause";
-        }
-    }
-</script>
-
-</body>
-</html>
+        .speed-control select {
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid #d
