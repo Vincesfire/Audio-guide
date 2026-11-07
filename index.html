@@ -2,52 +2,55 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Guide Audio Touristique</title>
     <style>
         * {
             box-sizing: border-box;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
         }
         body {
-            background-color: #0b132b; /* Bleu marine profond */
+            background-color: #0b132b;
             color: #f0f2f5;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
             min-height: 100vh;
             margin: 0;
-            padding: 20px;
+            padding: 12px;
         }
         .card {
-            background: #1c2541; /* Bleu marine intermédiaire */
-            padding: 25px;
-            border-radius: 20px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-            max-width: 500px;
+            background: #1c2541;
+            padding: 16px;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
             width: 100%;
+            max-width: 480px;
             text-align: center;
             border: 1px solid #3a506b;
+            margin-top: 10px;
+            margin-bottom: 20px;
         }
         h1 {
-            font-size: 1.5rem;
-            margin-bottom: 15px;
+            font-size: 1.35rem;
+            margin: 8px 0 14px 0;
             color: #ffffff;
         }
         button {
-            background-color: #ffd166; /* Touche de jaune */
+            background-color: #ffd166;
             color: #0b132b;
             border: none;
-            padding: 14px 24px;
-            font-size: 1.05rem;
+            padding: 14px 20px;
+            font-size: 1rem;
             font-weight: 700;
-            border-radius: 30px;
+            border-radius: 28px;
             cursor: pointer;
-            transition: background-color 0.2s, transform 0.1s;
             width: 100%;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             box-shadow: 0 4px 10px rgba(255, 209, 102, 0.2);
+            touch-action: manipulation;
         }
         button:active {
             transform: scale(0.98);
@@ -62,9 +65,9 @@
             display: flex;
             align-items: center;
             text-align: center;
-            margin: 15px 0;
+            margin: 12px 0;
             color: #8d99ae;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
         }
         .divider::before, .divider::after {
             content: '';
@@ -72,22 +75,23 @@
             border-bottom: 1px solid #3a506b;
         }
         .divider span {
-            padding: 0 10px;
+            padding: 0 8px;
         }
         .search-box {
             display: flex;
             gap: 8px;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
         }
         .search-box input {
             flex: 1;
-            padding: 12px 16px;
-            border-radius: 25px;
+            padding: 12px 14px;
+            border-radius: 24px;
             border: 1px solid #3a506b;
             background-color: #0b132b;
             color: #ffffff;
             font-size: 0.95rem;
             outline: none;
+            -webkit-appearance: none;
         }
         .search-box input:focus {
             border-color: #ffd166;
@@ -96,8 +100,8 @@
             width: 50px;
             flex-shrink: 0;
             margin-bottom: 0;
-            padding: 12px 0;
-            border-radius: 25px;
+            padding: 0;
+            border-radius: 24px;
             font-size: 1.2rem;
             display: flex;
             align-items: center;
@@ -105,68 +109,70 @@
         }
         .controls {
             display: flex;
-            gap: 10px;
-            margin-top: 5px;
+            gap: 8px;
+            margin-top: 4px;
         }
         .secondary-btn {
             background-color: #28385e;
             color: #f0f2f5;
-            padding: 10px;
+            padding: 12px;
             font-size: 0.9rem;
             border: 1px solid #3a506b;
-        }
-        .secondary-btn:hover:not(:disabled) {
-            background-color: #3a506b;
         }
         .more-btn {
             background-color: #28385e;
             color: #ffd166;
             border: 1px solid #ffd166;
-            margin-top: 15px;
+            margin-top: 12px;
             display: none;
         }
-        .more-btn:hover:not(:disabled) {
-            background-color: #3a506b;
-        }
         .speed-control {
-            margin: 15px 0 10px 0;
+            margin: 12px 0 8px 0;
             display: flex;
             align-items: center;
             justify-content: space-between;
             font-size: 0.9rem;
             color: #b0c4de;
+            background: #0b132b;
+            padding: 8px 12px;
+            border-radius: 12px;
+            border: 1px solid #3a506b;
         }
         .speed-control select {
-            padding: 6px 12px;
+            padding: 6px 10px;
             border-radius: 8px;
             border: 1px solid #3a506b;
-            background: #0b132b;
+            background: #1c2541;
             color: #ffffff;
             font-size: 0.9rem;
+            outline: none;
         }
         #status {
-            margin: 12px 0;
-            font-size: 0.9rem;
+            margin: 10px 0;
+            font-size: 0.85rem;
             color: #ffd166;
-            min-height: 22px;
+            min-height: 20px;
+            padding: 0 4px;
+            word-break: break-word;
         }
         #place-image-container {
-            margin: 15px 0;
+            margin: 12px 0;
             display: none;
         }
         #place-image {
             width: 100%;
-            max-height: 220px;
+            max-height: 200px;
             object-fit: cover;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
             border: 1px solid #3a506b;
         }
         #article-title {
             font-weight: bold;
-            font-size: 1.15rem;
-            margin: 10px 0 5px 0;
+            font-size: 1.05rem;
+            margin: 8px 0 4px 0;
             color: #ffd166;
+            word-break: break-word;
         }
         #output {
             text-align: left;
@@ -175,22 +181,24 @@
             border-radius: 10px;
             font-size: 0.9rem;
             line-height: 1.4;
-            max-height: 180px;
+            max-height: 160px;
             overflow-y: auto;
-            margin-top: 10px;
+            margin-top: 8px;
             display: none;
             color: #e2e8f0;
             border: 1px solid #3a506b;
+            -webkit-overflow-scrolling: touch;
         }
         #wikipedia-link-container {
-            margin-top: 15px;
+            margin-top: 14px;
             display: none;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
         }
         #wikipedia-link-container a {
             color: #ffd166;
             text-decoration: none;
             font-weight: 500;
+            word-break: break-word;
         }
         #wikipedia-link-container a:hover {
             text-decoration: underline;
@@ -207,7 +215,7 @@
     <div class="divider"><span>OU SAISIR UN LIEU</span></div>
 
     <div class="search-box">
-        <input type="text" id="manual-place-input" placeholder="Ex: Panthéon, Massy, Hyde Park..." onkeypress="handleKeyPress(event)">
+        <input type="text" id="manual-place-input" placeholder="Ex: Panthéon, Massy..." onkeypress="handleKeyPress(event)">
         <button id="search-btn" onclick="startGuideManual()">🔍</button>
     </div>
 
@@ -269,10 +277,10 @@
     function handleKeyPress(event) {
         if (event.key === 'Enter') {
             startGuideManual();
+            document.getElementById('manual-place-input').blur(); // Masquer le clavier virtuel sur mobile
         }
     }
 
-    // Recherche GPS
     function startGuideGPS() {
         resetUI();
 
@@ -288,7 +296,7 @@
             (position) => {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
-                setStatus(`Position trouvée (${lat.toFixed(4)}, ${lon.toFixed(4)}). Recherche Wikipedia...`);
+                setStatus(`Position trouvée (${lat.toFixed(4)}, ${lon.toFixed(4)}). Recherche...`);
                 fetchWikipediaByCoords(lat, lon);
             },
             (error) => {
@@ -311,16 +319,17 @@
         );
     }
 
-    // Recherche Manuelle
     function startGuideManual() {
-        const query = document.getElementById('manual-place-input').value.trim();
+        const inputField = document.getElementById('manual-place-input');
+        const query = inputField.value.trim();
         if (!query) {
             setStatus("Veuillez saisir un nom de lieu.");
             return;
         }
 
+        inputField.blur(); // Fermer le clavier virtuel sur mobile
         resetUI();
-        setStatus(`Recherche de "${query}" sur Wikipédia...`);
+        setStatus(`Recherche de "${query}"...`);
         fetchWikipediaBySearch(query);
     }
 
@@ -353,7 +362,8 @@
             const data = await response.json();
 
             if (!data.query || !data.query.search || data.query.search.length === 0) {
-                setStatus(`Aucun résultat trouvé pour "${queryText}".`);
+                setStatus(`Aucun résultat pour "${queryText}".`);
+                document.getElementById('listen-btn').disabled = false;
                 return;
             }
 
@@ -363,6 +373,7 @@
         } catch (err) {
             console.error(err);
             setStatus("Erreur lors de la recherche du lieu.");
+            document.getElementById('listen-btn').disabled = false;
         }
     }
 
@@ -378,14 +389,12 @@
             setStatus(`Lieu trouvé : "${currentTitle}". Chargement...`);
             document.getElementById('article-title').innerText = currentTitle;
 
-            // Lien Wikipédia
             const wikiUrl = `https://fr.wikipedia.org/?curid=${pageId}`;
             const linkElement = document.getElementById('wikipedia-link');
             linkElement.href = wikiUrl;
             linkElement.innerText = `📖 Lire "${currentTitle}" sur Wikipédia`;
             document.getElementById('wikipedia-link-container').style.display = 'block';
 
-            // Image
             if (page.original && page.original.source) {
                 const imgElement = document.getElementById('place-image');
                 imgElement.src = page.original.source;
@@ -400,11 +409,9 @@
                 return;
             }
 
-            // Découpage de tous les paragraphes
             allParagraphs = fullText.split('\n').filter(p => p.trim().length > 0);
             currentParagraphIndex = 0;
 
-            // Premiers paragraphes pour ~2 min (index 0 à 4)
             const firstBatch = allParagraphs.slice(currentParagraphIndex, currentParagraphIndex + 5).join(" ");
             currentParagraphIndex += 5;
 
@@ -412,7 +419,6 @@
             outputDiv.innerText = firstBatch;
             outputDiv.style.display = 'block';
 
-            // Afficher le bouton "En savoir plus" s'il reste du texte
             if (currentParagraphIndex < allParagraphs.length) {
                 document.getElementById('more-btn').style.display = 'block';
             }
@@ -422,29 +428,25 @@
 
         } catch (err) {
             console.error(err);
-            setStatus("Erreur lors du chargement des détails de l'article.");
+            setStatus("Erreur lors du chargement des détails.");
             document.getElementById('listen-btn').disabled = false;
         }
     }
 
-    // Fonction pour charger la suite (+2 minutes de lecture complémentaire)
     function loadMoreDetails() {
         if (currentParagraphIndex >= allParagraphs.length) {
-            setStatus("Vous avez écouté tout le contenu disponible sur cet article.");
+            setStatus("Vous avez écouté tout le contenu disponible.");
             document.getElementById('more-btn').style.display = 'none';
             return;
         }
 
-        // Prendre les 5 paragraphes suivants sans redite
         const nextBatch = allParagraphs.slice(currentParagraphIndex, currentParagraphIndex + 5).join(" ");
         currentParagraphIndex += 5;
 
-        // Ajouter au texte affiché à l'écran
         const outputDiv = document.getElementById('output');
         outputDiv.innerText += "\n\n" + nextBatch;
         outputDiv.scrollTop = outputDiv.scrollHeight;
 
-        // Cacher le bouton s'il n'y a plus rien après
         if (currentParagraphIndex >= allParagraphs.length) {
             document.getElementById('more-btn').style.display = 'none';
         }
