@@ -126,8 +126,8 @@
             margin-top: 12px;
             display: none;
         }
-        .speed-control {
-            margin: 12px 0 8px 0;
+        .config-control {
+            margin: 8px 0;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -138,7 +138,7 @@
             border-radius: 12px;
             border: 1px solid #3a506b;
         }
-        .speed-control select {
+        .config-control select {
             padding: 6px 10px;
             border-radius: 8px;
             border: 1px solid #3a506b;
@@ -224,7 +224,18 @@
         <button id="search-btn" onclick="startGuideManual()">🔍</button>
     </div>
 
-    <div class="speed-control">
+    <!-- Sélecteur de durée -->
+    <div class="config-control">
+        <label for="duration-select">Durée de l'explication :</label>
+        <select id="duration-select">
+            <option value="2" selected>2 minutes</option>
+            <option value="4">4 minutes</option>
+            <option value="6">6 minutes</option>
+        </select>
+    </div>
+
+    <!-- Sélecteur de vitesse -->
+    <div class="config-control">
         <label for="speed-select">Vitesse de lecture :</label>
         <select id="speed-select" onchange="changeSpeed()">
             <option value="0.75">0.75x (Lent)</option>
@@ -251,7 +262,7 @@
     <div id="sources-badge"></div>
     <div id="output"></div>
 
-    <button id="more-btn" class="more-btn" onclick="loadMoreDetails()">📖 En savoir plus (+2 min)</button>
+    <button id="more-btn" class="more-btn" onclick="loadMoreDetails()">📖 En savoir plus (+ de détails)</button>
 
     <div id="wikipedia-link-container">
         <a id="wikipedia-link" href="#" target="_blank">📖 Lire l'article complet sur Wikipédia</a>
@@ -266,7 +277,6 @@
     let currentTitle = "";
     let availableVoices = [];
 
-    // Chargement dynamique des meilleures voix du téléphone
     function loadVoices() {
         availableVoices = synth.getVoices();
     }
@@ -275,16 +285,13 @@
         speechSynthesis.onvoiceschanged = loadVoices;
     }
 
-    // Sélection intelligente de la meilleure voix française (Google / Premium / Natural)
     function getBestFrenchVoice() {
         if (availableVoices.length === 0) {
             availableVoices = synth.getVoices();
         }
-
         const frVoices = availableVoices.filter(v => v.lang.startsWith('fr'));
         if (frVoices.length === 0) return null;
 
-        // Priorité aux voix de haute qualité (Natural, Premium, Google, Online)
         const premiumVoice = frVoices.find(v => 
             v.name.includes('Google') || 
             v.name.includes('Natural') || 
@@ -292,7 +299,6 @@
             v.name.includes('Enhanced') ||
             v.name.includes('Améliorée')
         );
-
         return premiumVoice || frVoices[0];
     }
 
@@ -464,19 +470,23 @@
             document.getElementById('sources-badge').innerText = "📚 Synthèse multi-sources : Wikipédia, Wikivoyage & Wikidata";
             currentChunkIndex = 0;
 
-            const firstBatch = combinedContent.slice(currentChunkIndex, currentChunkIndex + 5).join(" ");
-            currentChunkIndex += 5;
+            // Calcul du nombre de paragraphes en fonction de la durée choisie (2 min = 5 paragraphes, 4 min = 10, 6 min = 15)
+            const durationMinutes = parseInt(document.getElementById('duration-select').value);
+            const paragraphsCount = durationMinutes * 2.5; // ~2.5 paragraphes par minute
+
+            const initialBatch = combinedContent.slice(currentChunkIndex, currentChunkIndex + paragraphsCount).join(" ");
+            currentChunkIndex += paragraphsCount;
 
             const outputDiv = document.getElementById('output');
-            outputDiv.innerText = firstBatch;
+            outputDiv.innerText = initialBatch;
             outputDiv.style.display = 'block';
 
             if (currentChunkIndex < combinedContent.length) {
                 document.getElementById('more-btn').style.display = 'block';
             }
 
-            setStatus("Lecture audio en cours...");
-            speakText(firstBatch);
+            setStatus(`Lecture audio en cours (${durationMinutes} min)...`);
+            speakText(initialBatch);
 
         } catch (err) {
             console.error(err);
@@ -515,7 +525,6 @@
         currentUtterance = new SpeechSynthesisUtterance(text);
         currentUtterance.lang = 'fr-FR';
         
-        // Attribution de la meilleure voix naturelle trouvée
         const bestVoice = getBestFrenchVoice();
         if (bestVoice) {
             currentUtterance.voice = bestVoice;
