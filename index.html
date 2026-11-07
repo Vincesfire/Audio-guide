@@ -295,7 +295,7 @@
     <div id="sources-badge"></div>
     <div id="output"></div>
 
-    <button id="more-btn" class="more-btn" onclick="loadMoreDetails()">📖 En savoir plus (+ de détails)</button>
+    <button id="more-btn" class="more-btn" onclick="loadMoreDetails()">📖 En savoir plus (+ de chapitres)</button>
 
     <div id="wikipedia-link-container">
         <a id="wikipedia-link" href="#" target="_blank">📖 Lire l'article complet sur Wikipédia</a>
@@ -385,7 +385,7 @@
             (position) => {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
-                setStatus(`Position trouvée. Analyse complète de l'article...`);
+                setStatus(`Position trouvée. Analyse de l'article complet...`);
                 fetchFullArticleByCoords(lat, lon);
             },
             (error) => {
@@ -456,21 +456,21 @@
         }
     }
 
-    // Analyse approfondie de l'article complet (tous les chapitres)
+    // Récupération de TOUS les chapitres de l'article complet (Sections HTML converties en texte propre)
     async function loadFullArticleDetails(title, pageId) {
         try {
             currentTitle = title;
-            setStatus(`Analyse intégrale des chapitres de "${currentTitle}"...`);
+            setStatus(`Extraction de l'article complet pour "${currentTitle}"...`);
             document.getElementById('article-title').innerText = currentTitle;
 
-            // exintro=0 récupère TOUT l'article (toutes les sections et chapitres) en texte brut
-            const wikiDetailUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=0&explaintext=1&piprop=original&pageids=${pageId}&format=json&origin=*`;
-            const wikiPromise = fetch(wikiDetailUrl).then(r => r.json());
+            // Utilisation de parse=text pour récupérer l'intégralité du contenu brut structuré de l'article (tous les chapitres)
+            const parseUrl = `https://fr.wikipedia.org/w/api.php?action=parse&pageid=${pageId}&prop=text&format=json&origin=*`;
+            const parsePromise = fetch(parseUrl).then(r => r.json());
 
             const voyUrl = `https://fr.wikivoyage.org/w/api.php?action=query&prop=extracts&exintro=0&explaintext=1&titles=${encodeURIComponent(title)}&format=json&origin=*`;
             const voyPromise = fetch(voyUrl).then(r => r.json()).catch(() => null);
 
-            const [wikiData, voyData] = await Promise.all([wikiPromise, voyPromise]);
+            const [parseData, voyData] = await Promise.all([parsePromise, voyPromise]);
 
             const wikiUrl = `https://fr.wikipedia.org/?curid=${pageId}`;
             const linkElement = document.getElementById('wikipedia-link');
@@ -478,15 +478,18 @@
             linkElement.innerText = `📖 Lire "${currentTitle}" sur Wikipédia`;
             document.getElementById('wikipedia-link-container').style.display = 'block';
 
-            const page = wikiData.query.pages[pageId];
-            if (page.original && page.original.source) {
+            // Récupération de l'image via une requête d'illustration séparée
+            const imgUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=pageimages&piprop=original&pageids=${pageId}&format=json&origin=*`;
+            const imgRes = await fetch(imgUrl).then(r => r.json()).catch(() => null);
+            if (imgRes && imgRes.query && imgRes.query.pages[pageId] && imgRes.query.pages[pageId].original) {
                 const imgElement = document.getElementById('place-image');
-                imgElement.src = page.original.source;
+                imgElement.src = imgRes.query.pages[pageId].original.source;
                 document.getElementById('place-image-container').style.display = 'block';
             }
 
             let rawParagraphs = [];
 
+            // Intégration de Wikivoyage pour la dimension touristique
             if (voyData && voyData.query && voyData.query.pages) {
                 const voyPages = voyData.query.pages;
                 for (let id in voyPages) {
@@ -496,20 +499,33 @@
                 }
             }
 
-            let wikiFullText = page.extract || "";
-            if (wikiFullText.trim() !== "") {
-                const wikiParagraphs = wikiFullText.split('\n').filter(p => p.trim().length > 0);
-                rawParagraphs = rawParagraphs.concat(wikiParagraphs);
+            // Conversion et nettoyage du HTML complet de Wikipédia pour extraire TOUS les paragraphes de tous les chapitres
+            if (parseData && parseData.parse && parseData.parse.text) {
+                const htmlContent = parseData.parse.text['*'];
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = htmlContent;
+
+                // Supprimer les éléments inutiles (tableaux de données, références, notes de bas de page, boîtes de navigation)
+                const unwanted = tempDiv.querySelectorAll('.navbox, .infobox, .reference, .mw-editsection, table, sup');
+                unwanted.forEach(el => el.remove());
+
+                // Extraire tous les paragraphes de tous les chapitres du corps de l'article
+                const paragraphs = tempDiv.querySelectorAll('p');
+                paragraphs.forEach(p => {
+                    let text = p.textContent.trim();
+                    // Nettoyer les balises de renvoi résiduelles et s'assurer que le paragraphe est pertinent
+                    text = text.replace(/\[\d+\]/g, '');
+                    if (text.length > 30) {
+                        rawParagraphs.push(text);
+                    }
+                });
             }
 
-            // Filtrage intelligent anti-doublons sur l'ensemble de l'article complet
+            // Filtrage strict anti-doublons sur l'ensemble des chapitres de l'article complet
             let seenSentences = new Set();
             combinedContent = [];
 
             for (let para of rawParagraphs) {
-                // Ignore les titres de sections trop courts (ex: "Références", "Voir aussi", "Notes")
-                if (para.trim().length < 40 && (para.includes("== ") || para.length < 30)) continue;
-
                 let sentences = para.split(/(?<=[.!?])\s+/);
                 let uniqueParaSentences = [];
 
@@ -534,12 +550,12 @@
                 return;
             }
 
-            document.getElementById('sources-badge').innerText = "📚 Analyse exhaustive de tous les chapitres";
+            document.getElementById('sources-badge').innerText = "📚 Synthèse globale de l'article complet (Tous chapitres)";
             currentChunkIndex = 0;
 
-            // Détermination du volume de départ selon la durée sélectionnée (2 min ~ 5 blocs, 4 min ~ 11 blocs, 6 min ~ 17 blocs)
+            // Détermination du volume de départ selon la durée sélectionnée (2 min ~ 6 blocs, 4 min ~ 13 blocs, 6 min ~ 20 blocs)
             const durationMinutes = parseInt(document.getElementById('duration-select').value);
-            const paragraphsCount = Math.max(4, Math.round(durationMinutes * 2.8));
+            const paragraphsCount = Math.max(5, Math.round(durationMinutes * 3.3));
 
             const initialBatch = combinedContent.slice(currentChunkIndex, currentChunkIndex + paragraphsCount).join(" ");
             currentChunkIndex += paragraphsCount;
