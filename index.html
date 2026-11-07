@@ -93,11 +93,15 @@
             border-color: #ffd166;
         }
         .search-box button {
-            width: auto;
+            width: 50px;
+            flex-shrink: 0;
             margin-bottom: 0;
-            padding: 12px 20px;
+            padding: 12px 0;
             border-radius: 25px;
-            white-space: nowrap;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .controls {
             display: flex;
@@ -112,6 +116,16 @@
             border: 1px solid #3a506b;
         }
         .secondary-btn:hover:not(:disabled) {
+            background-color: #3a506b;
+        }
+        .more-btn {
+            background-color: #28385e;
+            color: #ffd166;
+            border: 1px solid #ffd166;
+            margin-top: 15px;
+            display: none;
+        }
+        .more-btn:hover:not(:disabled) {
             background-color: #3a506b;
         }
         .speed-control {
@@ -169,7 +183,7 @@
             border: 1px solid #3a506b;
         }
         #wikipedia-link-container {
-            margin-top: 20px;
+            margin-top: 15px;
             display: none;
             font-size: 0.9rem;
         }
@@ -194,14 +208,15 @@
 
     <div class="search-box">
         <input type="text" id="manual-place-input" placeholder="Ex: Panthéon, Massy, Hyde Park..." onkeypress="handleKeyPress(event)">
-        <button id="search-btn" onclick="startGuideManual()">🔍 Chercher</button>
+        <button id="search-btn" onclick="startGuideManual()">🔍</button>
     </div>
 
     <div class="speed-control">
         <label for="speed-select">Vitesse de lecture :</label>
         <select id="speed-select" onchange="changeSpeed()">
             <option value="0.75">0.75x (Lent)</option>
-            <option value="1.0" selected>1.0x (Normal)</option>
+            <option value="1.0">1.0x (Normal)</option>
+            <option value="1.1" selected>1.1x (Idéal)</option>
             <option value="1.25">1.25x (Rapide)</option>
             <option value="1.5">1.5x (Très rapide)</option>
             <option value="2.0">2.0x (Max)</option>
@@ -222,6 +237,8 @@
     <div id="article-title"></div>
     <div id="output"></div>
 
+    <button id="more-btn" class="more-btn" onclick="loadMoreDetails()" style="display: none;">📖 En savoir plus (+2 min)</button>
+
     <div id="wikipedia-link-container">
         <a id="wikipedia-link" href="#" target="_blank">📖 Lire l'article complet sur Wikipédia</a>
     </div>
@@ -230,7 +247,9 @@
 <script>
     const synth = window.speechSynthesis;
     let currentUtterance = null;
-    let textToSpeak = "";
+    let allParagraphs = [];
+    let currentParagraphIndex = 0;
+    let currentTitle = "";
 
     function setStatus(text) {
         document.getElementById('status').innerText = text;
@@ -242,6 +261,9 @@
         document.getElementById('article-title').innerText = '';
         document.getElementById('place-image-container').style.display = 'none';
         document.getElementById('wikipedia-link-container').style.display = 'none';
+        document.getElementById('more-btn').style.display = 'none';
+        allParagraphs = [];
+        currentParagraphIndex = 0;
     }
 
     function handleKeyPress(event) {
@@ -250,7 +272,7 @@
         }
     }
 
-    // Recherche via Géolocalisation GPS
+    // Recherche GPS
     function startGuideGPS() {
         resetUI();
 
@@ -289,7 +311,7 @@
         );
     }
 
-    // Recherche via Saisie Manuelle
+    // Recherche Manuelle
     function startGuideManual() {
         const query = document.getElementById('manual-place-input').value.trim();
         if (!query) {
@@ -302,7 +324,6 @@
         fetchWikipediaBySearch(query);
     }
 
-    // Récupération Wikipédia par coordonnées GPS
     async function fetchWikipediaByCoords(lat, lon) {
         try {
             const geosearchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=3000&gslimit=1&format=json&origin=*`;
@@ -325,7 +346,6 @@
         }
     }
 
-    // Récupération Wikipédia par texte de recherche
     async function fetchWikipediaBySearch(queryText) {
         try {
             const searchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(queryText)}&srlimit=1&format=json&origin=*`;
@@ -346,7 +366,6 @@
         }
     }
 
-    // Chargement commun des détails (texte long 2 min + photo + lien)
     async function loadArticleDetails(pageId) {
         try {
             const detailUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=0&explaintext=1&piprop=original&pageids=${pageId}&format=json&origin=*`;
@@ -354,16 +373,16 @@
             const detailData = await detailResponse.json();
 
             const page = detailData.query.pages[pageId];
-            const title = page.title;
+            currentTitle = page.title;
 
-            setStatus(`Lieu trouvé : "${title}". Chargement...`);
-            document.getElementById('article-title').innerText = title;
+            setStatus(`Lieu trouvé : "${currentTitle}". Chargement...`);
+            document.getElementById('article-title').innerText = currentTitle;
 
             // Lien Wikipédia
             const wikiUrl = `https://fr.wikipedia.org/?curid=${pageId}`;
             const linkElement = document.getElementById('wikipedia-link');
             linkElement.href = wikiUrl;
-            linkElement.innerText = `📖 Lire "${title}" sur Wikipédia`;
+            linkElement.innerText = `📖 Lire "${currentTitle}" sur Wikipédia`;
             document.getElementById('wikipedia-link-container').style.display = 'block';
 
             // Image
@@ -381,22 +400,57 @@
                 return;
             }
 
-            // Découpage pour environ 2 min de lecture (~5 paragraphes)
-            const paragraphs = fullText.split('\n').filter(p => p.trim().length > 0);
-            textToSpeak = paragraphs.slice(0, 5).join(" ");
+            // Découpage de tous les paragraphes
+            allParagraphs = fullText.split('\n').filter(p => p.trim().length > 0);
+            currentParagraphIndex = 0;
+
+            // Premiers paragraphes pour ~2 min (index 0 à 4)
+            const firstBatch = allParagraphs.slice(currentParagraphIndex, currentParagraphIndex + 5).join(" ");
+            currentParagraphIndex += 5;
 
             const outputDiv = document.getElementById('output');
-            outputDiv.innerText = textToSpeak;
+            outputDiv.innerText = firstBatch;
             outputDiv.style.display = 'block';
 
+            // Afficher le bouton "En savoir plus" s'il reste du texte
+            if (currentParagraphIndex < allParagraphs.length) {
+                document.getElementById('more-btn').style.display = 'block';
+            }
+
             setStatus("Lecture audio en cours...");
-            speakText(`Voici la présentation détaillée du lieu : ${title}. ${textToSpeak}`);
+            speakText(`Voici la présentation détaillée de ${currentTitle}. ${firstBatch}`);
 
         } catch (err) {
             console.error(err);
             setStatus("Erreur lors du chargement des détails de l'article.");
             document.getElementById('listen-btn').disabled = false;
         }
+    }
+
+    // Fonction pour charger la suite (+2 minutes de lecture complémentaire)
+    function loadMoreDetails() {
+        if (currentParagraphIndex >= allParagraphs.length) {
+            setStatus("Vous avez écouté tout le contenu disponible sur cet article.");
+            document.getElementById('more-btn').style.display = 'none';
+            return;
+        }
+
+        // Prendre les 5 paragraphes suivants sans redite
+        const nextBatch = allParagraphs.slice(currentParagraphIndex, currentParagraphIndex + 5).join(" ");
+        currentParagraphIndex += 5;
+
+        // Ajouter au texte affiché à l'écran
+        const outputDiv = document.getElementById('output');
+        outputDiv.innerText += "\n\n" + nextBatch;
+        outputDiv.scrollTop = outputDiv.scrollHeight;
+
+        // Cacher le bouton s'il n'y a plus rien après
+        if (currentParagraphIndex >= allParagraphs.length) {
+            document.getElementById('more-btn').style.display = 'none';
+        }
+
+        setStatus("Lecture de la suite en cours...");
+        speakText(`Poursuivons la découverte de ${currentTitle}. ${nextBatch}`);
     }
 
     function speakText(text) {
