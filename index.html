@@ -76,4 +76,253 @@
         .speed-control select {
             padding: 6px 12px;
             border-radius: 8px;
-            border: 1px solid #d
+            border: 1px solid #d2d2d7;
+            background: #fff;
+            font-size: 0.9rem;
+        }
+        #status {
+            margin: 12px 0;
+            font-size: 0.9rem;
+            color: #86868b;
+            min-height: 22px;
+        }
+        #place-image-container {
+            margin: 15px 0;
+            display: none;
+        }
+        #place-image {
+            width: 100%;
+            max-height: 220px;
+            object-fit: cover;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        #article-title {
+            font-weight: bold;
+            font-size: 1.15rem;
+            margin: 10px 0 5px 0;
+            color: #0071e3;
+        }
+        #output {
+            text-align: left;
+            background: #f5f5f7;
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            max-height: 180px;
+            overflow-y: auto;
+            margin-top: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Guide Audio Touristique</h1>
+    
+    <button id="listen-btn" onclick="startGuide()">📍 Écouter le lieu actuel</button>
+    
+    <div class="speed-control">
+        <label for="speed-select">Vitesse de lecture :</label>
+        <select id="speed-select" onchange="changeSpeed()">
+            <option value="0.75">0.75x (Lent)</option>
+            <option value="1.0" selected>1.0x (Normal)</option>
+            <option value="1.25">1.25x (Rapide)</option>
+            <option value="1.5">1.5x (Très rapide)</option>
+            <option value="2.0">2.0x (Max)</option>
+        </select>
+    </div>
+
+    <div class="controls">
+        <button id="pause-btn" class="secondary-btn" onclick="pauseAudio()" disabled>Pause</button>
+        <button id="stop-btn" class="secondary-btn" onclick="stopAudio()" disabled>Arrêter</button>
+    </div>
+
+    <div id="status">Cliquez sur le bouton pour détecter votre position.</div>
+    
+    <div id="place-image-container">
+        <img id="place-image" src="" alt="Photo du lieu identifié">
+    </div>
+    
+    <div id="article-title"></div>
+    <div id="output"></div>
+</div>
+
+<script>
+    const synth = window.speechSynthesis;
+    let currentUtterance = null;
+    let textToSpeak = "";
+
+    function setStatus(text) {
+        document.getElementById('status').innerText = text;
+    }
+
+    function startGuide() {
+        stopAudio();
+        document.getElementById('output').style.display = 'none';
+        document.getElementById('article-title').innerText = '';
+        document.getElementById('place-image-container').style.display = 'none';
+
+        if (!navigator.geolocation) {
+            setStatus("La géolocalisation n'est pas supportée par votre navigateur.");
+            return;
+        }
+
+        setStatus("Recherche de votre position GPS...");
+        document.getElementById('listen-btn').disabled = true;
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                setStatus(`Position trouvée (${lat.toFixed(4)}, ${lon.toFixed(4)}). Recherche Wikipedia...`);
+                fetchWikipediaData(lat, lon);
+            },
+            (error) => {
+                document.getElementById('listen-btn').disabled = false;
+                switch(error.code) {
+                    case error.PERMISSION_DENIED:
+                        setStatus("Erreur : Permission GPS refusée.");
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        setStatus("Erreur : Position GPS indisponible.");
+                        break;
+                    case error.TIMEOUT:
+                        setStatus("Erreur : Temps d'attente dépassé.");
+                        break;
+                    default:
+                        setStatus("Erreur GPS inconnue.");
+                }
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    }
+
+    async function fetchWikipediaData(lat, lon) {
+        try {
+            // 1. Recherche de l'article le plus proche (rayon de 3000m pour maximiser les chances)
+            const geosearchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=3000&gslimit=1&format=json&origin=*`;
+            const geoResponse = await fetch(geosearchUrl);
+            const geoData = await geoResponse.json();
+
+            if (!geoData.query || !geoData.query.geosearch || geoData.query.geosearch.length === 0) {
+                setStatus("Aucun article touristique trouvé à proximité.");
+                document.getElementById('listen-btn').disabled = false;
+                return;
+            }
+
+            const pageId = geoData.query.geosearch[0].pageid;
+            const title = geoData.query.geosearch[0].title;
+
+            setStatus(`Lieu trouvé : "${title}". Chargement des détails et de l'image...`);
+            document.getElementById('article-title').innerText = title;
+
+            // 2. Récupération d'un contenu plus détaillé (plusieurs paragraphes) + Image de l'article (pageimages)
+            const detailUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=0&explaintext=1&piprop=original&pageids=${pageId}&format=json&origin=*`;
+            const detailResponse = await fetch(detailUrl);
+            const detailData = await detailResponse.json();
+
+            const page = detailData.query.pages[pageId];
+            
+            // Gestion de l'image si elle existe
+            if (page.original && page.original.source) {
+                const imgElement = document.getElementById('place-image');
+                imgElement.src = page.original.source;
+                document.getElementById('place-image-container').style.display = 'block';
+            }
+
+            let fullText = page.extract || "";
+
+            if (fullText.trim() === '') {
+                setStatus("L'article trouvé ne contient pas assez de texte.");
+                document.getElementById('listen-btn').disabled = false;
+                return;
+            }
+
+            // Nettoyage et limitation pour cibler environ 2 minutes de lecture (~300 mots)
+            const paragraphs = fullText.split('\n').filter(p => p.trim().length > 0);
+            textToSpeak = paragraphs.slice(0, 3).join(" "); // Prend les 3 premiers paragraphes riches
+
+            // Affichage du texte
+            const outputDiv = document.getElementById('output');
+            outputDiv.innerText = textToSpeak;
+            outputDiv.style.display = 'block';
+
+            setStatus("Lecture audio en cours...");
+            speakText("Voici la découverte du lieu : " + title + ". " + textToSpeak);
+
+        } catch (err) {
+            console.error(err);
+            setStatus("Erreur lors de la récupération des données.");
+            document.getElementById('listen-btn').disabled = false;
+        }
+    }
+
+    function speakText(text) {
+        if (synth.speaking) {
+            synth.cancel();
+        }
+
+        currentUtterance = new SpeechSynthesisUtterance(text);
+        currentUtterance.lang = 'fr-FR';
+        
+        // Appliquer la vitesse sélectionnée
+        const speedSelect = document.getElementById('speed-select');
+        currentUtterance.rate = parseFloat(speedSelect.value);
+
+        currentUtterance.onend = () => {
+            setStatus("Lecture terminée.");
+            document.getElementById('listen-btn').disabled = false;
+            document.getElementById('pause-btn').disabled = true;
+            document.getElementById('stop-btn').disabled = true;
+        };
+
+        currentUtterance.onerror = (e) => {
+            console.error(e);
+            setStatus("Erreur lors de la lecture audio.");
+            document.getElementById('listen-btn').disabled = false;
+        };
+
+        synth.speak(currentUtterance);
+        document.getElementById('pause-btn').disabled = false;
+        document.getElementById('stop-btn').disabled = false;
+    }
+
+    function changeSpeed() {
+        if (synth.speaking && !synth.paused && currentUtterance) {
+            // Pour changer la vitesse en direct, on relance la synthèse (optionnel mais fluide)
+            const speed = parseFloat(document.getElementById('speed-select').value);
+            currentUtterance.rate = speed;
+        }
+    }
+
+    function pauseAudio() {
+        if (synth.speaking) {
+            if (synth.paused) {
+                synth.resume();
+                document.getElementById('pause-btn').innerText = "Pause";
+                setStatus("Lecture audio en cours...");
+            } else {
+                synth.pause();
+                document.getElementById('pause-btn').innerText = "Reprendre";
+                setStatus("Lecture en pause.");
+            }
+        }
+    }
+
+    function stopAudio() {
+        if (synth.speaking || synth.paused) {
+            synth.cancel();
+            setStatus("Lecture arrêtée.");
+            document.getElementById('listen-btn').disabled = false;
+            document.getElementById('pause-btn').disabled = true;
+            document.getElementById('stop-btn').disabled = true;
+            document.getElementById('pause-btn').innerText = "Pause";
+        }
+    }
+</script>
+
+</body>
+</html>
