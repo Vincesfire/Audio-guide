@@ -155,6 +155,32 @@
             padding: 0 4px;
             word-break: break-word;
         }
+        /* Barre de progression et minuterie */
+        #progress-container {
+            margin: 12px 0 4px 0;
+            display: none;
+        }
+        .progress-bar-bg {
+            width: 100%;
+            height: 6px;
+            background-color: #0b132b;
+            border-radius: 3px;
+            overflow: hidden;
+            border: 1px solid #3a506b;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background-color: #ffd166;
+            transition: width 0.2s linear;
+        }
+        .time-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #8d99ae;
+            margin-top: 4px;
+        }
         #place-image-container {
             margin: 12px 0;
             display: none;
@@ -224,7 +250,6 @@
         <button id="search-btn" onclick="startGuideManual()">🔍</button>
     </div>
 
-    <!-- Sélecteur de durée -->
     <div class="config-control">
         <label for="duration-select">Durée de l'explication :</label>
         <select id="duration-select">
@@ -234,7 +259,6 @@
         </select>
     </div>
 
-    <!-- Sélecteur de vitesse -->
     <div class="config-control">
         <label for="speed-select">Vitesse de lecture :</label>
         <select id="speed-select" onchange="changeSpeed()">
@@ -253,6 +277,17 @@
     </div>
 
     <div id="status">Choisissez une méthode pour démarrer.</div>
+    
+    <!-- Zone de progression et minuterie -->
+    <div id="progress-container">
+        <div class="progress-bar-bg">
+            <div id="progress-fill" class="progress-bar-fill"></div>
+        </div>
+        <div class="time-info">
+            <span id="current-time">0:00</span>
+            <span id="total-time">0:00</span>
+        </div>
+    </div>
     
     <div id="place-image-container">
         <img id="place-image" src="" alt="Photo du lieu identifié">
@@ -276,6 +311,13 @@
     let currentChunkIndex = 0;
     let currentTitle = "";
     let availableVoices = [];
+
+    // Variables pour la gestion du temps et de la progression
+    let speechStartTime = 0;
+    let speechDurationMs = 0;
+    let progressInterval = null;
+    let isPausedState = false;
+    let pauseElapsedMs = 0;
 
     function loadVoices() {
         availableVoices = synth.getVoices();
@@ -306,6 +348,12 @@
         document.getElementById('status').innerText = text;
     }
 
+    function formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    }
+
     function resetUI() {
         stopAudio();
         document.getElementById('output').style.display = 'none';
@@ -314,6 +362,7 @@
         document.getElementById('place-image-container').style.display = 'none';
         document.getElementById('wikipedia-link-container').style.display = 'none';
         document.getElementById('more-btn').style.display = 'none';
+        document.getElementById('progress-container').style.display = 'none';
         combinedContent = [];
         currentChunkIndex = 0;
     }
@@ -339,7 +388,7 @@
             (position) => {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
-                setStatus(`Position trouvée. Croisement des sources...`);
+                setStatus(`Position trouvée. Analyse multi-sources...`);
                 fetchMultiSourceByCoords(lat, lon);
             },
             (error) => {
@@ -413,7 +462,7 @@
     async function loadMultiSourceDetails(title, pageId) {
         try {
             currentTitle = title;
-            setStatus(`Fusion des données pour "${currentTitle}"...`);
+            setStatus(`Traitement et nettoyage des données pour "${currentTitle}"...`);
             document.getElementById('article-title').innerText = currentTitle;
 
             const wikiDetailUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=extracts|pageimages&exintro=0&explaintext=1&piprop=original&pageids=${pageId}&format=json&origin=*`;
@@ -422,10 +471,7 @@
             const voyUrl = `https://fr.wikivoyage.org/w/api.php?action=query&prop=extracts&exintro=0&explaintext=1&titles=${encodeURIComponent(title)}&format=json&origin=*`;
             const voyPromise = fetch(voyUrl).then(r => r.json()).catch(() => null);
 
-            const wikidataUrl = `https://fr.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
-            const wikiSummaryPromise = fetch(wikidataUrl).then(r => r.json()).catch(() => null);
-
-            const [wikiData, voyData, summaryData] = await Promise.all([wikiPromise, voyPromise, wikiSummaryPromise]);
+            const [wikiData, voyData] = await Promise.all([wikiPromise, voyPromise]);
 
             const wikiUrl = `https://fr.wikipedia.org/?curid=${pageId}`;
             const linkElement = document.getElementById('wikipedia-link');
@@ -440,17 +486,13 @@
                 document.getElementById('place-image-container').style.display = 'block';
             }
 
-            combinedContent = [];
-
-            if (summaryData && summaryData.extract) {
-                combinedContent.push(summaryData.extract);
-            }
+            let rawParagraphs = [];
 
             if (voyData && voyData.query && voyData.query.pages) {
                 const voyPages = voyData.query.pages;
                 for (let id in voyPages) {
                     if (voyPages[id].extract && voyPages[id].extract.trim() !== "") {
-                        combinedContent.push("Perspective touristique : " + voyPages[id].extract);
+                        rawParagraphs.push(voyPages[id].extract);
                     }
                 }
             }
@@ -458,7 +500,29 @@
             let wikiFullText = page.extract || "";
             if (wikiFullText.trim() !== "") {
                 const wikiParagraphs = wikiFullText.split('\n').filter(p => p.trim().length > 0);
-                combinedContent = combinedContent.concat(wikiParagraphs);
+                rawParagraphs = rawParagraphs.concat(wikiParagraphs);
+            }
+
+            let seenSentences = new Set();
+            combinedContent = [];
+
+            for (let para of rawParagraphs) {
+                let sentences = para.split(/(?<=[.!?])\s+/);
+                let uniqueParaSentences = [];
+
+                for (let sentence of sentences) {
+                    let cleanSentence = sentence.trim();
+                    let normalized = cleanSentence.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
+
+                    if (cleanSentence.length > 15 && !seenSentences.has(normalized)) {
+                        seenSentences.add(normalized);
+                        uniqueParaSentences.push(cleanSentence);
+                    }
+                }
+
+                if (uniqueParaSentences.length > 0) {
+                    combinedContent.push(uniqueParaSentences.join(" "));
+                }
             }
 
             if (combinedContent.length === 0) {
@@ -467,12 +531,11 @@
                 return;
             }
 
-            document.getElementById('sources-badge').innerText = "📚 Synthèse multi-sources : Wikipédia, Wikivoyage & Wikidata";
+            document.getElementById('sources-badge').innerText = "📚 Synthèse optimisée sans doublons";
             currentChunkIndex = 0;
 
-            // Calcul du nombre de paragraphes en fonction de la durée choisie (2 min = 5 paragraphes, 4 min = 10, 6 min = 15)
             const durationMinutes = parseInt(document.getElementById('duration-select').value);
-            const paragraphsCount = durationMinutes * 2.5; // ~2.5 paragraphes par minute
+            const paragraphsCount = Math.max(3, durationMinutes * 2);
 
             const initialBatch = combinedContent.slice(currentChunkIndex, currentChunkIndex + paragraphsCount).join(" ");
             currentChunkIndex += paragraphsCount;
@@ -485,7 +548,7 @@
                 document.getElementById('more-btn').style.display = 'block';
             }
 
-            setStatus(`Lecture audio en cours (${durationMinutes} min)...`);
+            setStatus(`Lecture audio en cours...`);
             speakText(initialBatch);
 
         } catch (err) {
@@ -531,16 +594,52 @@
         }
 
         const speedSelect = document.getElementById('speed-select');
-        currentUtterance.rate = parseFloat(speedSelect.value);
+        const speechRate = parseFloat(speedSelect.value);
+        currentUtterance.rate = speechRate;
+
+        // Calcul dynamique de la durée estimée en fonction du nombre de mots et de la vitesse
+        const wordCount = text.split(/\s+/).length;
+        // Vitesse de parole normale ~ 150 mots par minute à 1.0x
+        const baseDurationSeconds = (wordCount / 150) * 60;
+        speechDurationMs = (baseDurationSeconds / speechRate) * 1000;
+
+        // Affichage de la minuterie et de la barre
+        document.getElementById('total-time').innerText = formatTime(speechDurationMs / 1000);
+        document.getElementById('current-time').innerText = "0:00";
+        document.getElementById('progress-fill').style.width = "0%";
+        document.getElementById('progress-container').style.display = 'block';
+
+        speechStartTime = Date.now();
+        pauseElapsedMs = 0;
+        isPausedState = false;
+
+        if (progressInterval) clearInterval(progressInterval);
+
+        progressInterval = setInterval(() => {
+            if (!synth.speaking) return;
+
+            if (!isPausedState) {
+                const elapsed = Date.now() - speechStartTime + pauseElapsedMs;
+                const progress = Math.min(100, (elapsed / speechDurationMs) * 100);
+
+                document.getElementById('progress-fill').style.width = progress + '%';
+                document.getElementById('current-time').innerText = formatTime(Math.min(speechDurationMs, elapsed) / 1000);
+            }
+        }, 200);
 
         currentUtterance.onend = () => {
+            clearInterval(progressInterval);
+            document.getElementById('progress-fill').style.width = "100%";
+            document.getElementById('current-time').innerText = formatTime(speechDurationMs / 1000);
             setStatus("Lecture terminée.");
             document.getElementById('listen-btn').disabled = false;
             document.getElementById('pause-btn').disabled = true;
             document.getElementById('stop-btn').disabled = true;
+            document.getElementById('pause-btn').innerText = "Pause";
         };
 
         currentUtterance.onerror = (e) => {
+            clearInterval(progressInterval);
             console.error(e);
             setStatus("Erreur lors de la lecture audio.");
             document.getElementById('listen-btn').disabled = false;
@@ -555,6 +654,7 @@
         if (synth.speaking && !synth.paused && currentUtterance) {
             const speed = parseFloat(document.getElementById('speed-select').value);
             currentUtterance.rate = speed;
+            // Recalculer la durée restante si la vitesse change en cours de route
         }
     }
 
@@ -562,10 +662,14 @@
         if (synth.speaking) {
             if (synth.paused) {
                 synth.resume();
+                isPausedState = false;
+                speechStartTime = Date.now(); // Réinitialiser le point de départ du chrono après reprise
                 document.getElementById('pause-btn').innerText = "Pause";
                 setStatus("Lecture audio en cours...");
             } else {
                 synth.pause();
+                isPausedState = true;
+                pauseElapsedMs += Date.now() - speechStartTime; // Mémoriser le temps écoulé avant la pause
                 document.getElementById('pause-btn').innerText = "Reprendre";
                 setStatus("Lecture en pause.");
             }
@@ -575,7 +679,9 @@
     function stopAudio() {
         if (synth.speaking || synth.paused) {
             synth.cancel();
+            if (progressInterval) clearInterval(progressInterval);
             setStatus("Lecture arrêtée.");
+            document.getElementById('progress-container').style.display = 'none';
             document.getElementById('listen-btn').disabled = false;
             document.getElementById('pause-btn').disabled = true;
             document.getElementById('stop-btn').disabled = true;
