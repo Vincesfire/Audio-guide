@@ -3,7 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Guide Audio Touristique</title>
+    <title>🌍 Guide Audio Touristique</title>
+    
+    <!-- Configuration pour l'écran d'accueil du smartphone (PWA & iOS) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Guide Audio">
+    <link rel="apple-touch-icon" href="https://images.emojiterra.com/google/android-11/512px/1f30f.png">
+    
+    <!-- Manifest inline avec l'icône du globe terrestre -->
+    <link rel="manifest" href='data:application/manifest+json,{
+      "name": "Guide Audio Touristique",
+      "short_name": "Guide Audio",
+      "start_url": ".",
+      "display": "standalone",
+      "background_color": "#0b132b",
+      "theme_color": "#0b132b",
+      "icons": [
+        {
+          "src": "https://images.emojiterra.com/google/android-11/512px/1f30f.png",
+          "sizes": "512x512",
+          "type": "image/png"
+        }
+      ]
+    }'>
+
     <style>
         * {
             box-sizing: border-box;
@@ -182,7 +206,7 @@
             margin-top: 4px;
         }
         
-        /* Carrousel fonctionnel et fluide avec flèches */
+        /* Carrousel épuré sans flèches */
         #carousel-container {
             margin: 12px 0;
             display: none;
@@ -219,36 +243,6 @@
             width: 100%;
             max-height: 200px;
             object-fit: cover;
-        }
-        .carousel-btn {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            background: rgba(11, 19, 43, 0.8);
-            color: #ffd166;
-            border: 1px solid #3a506b;
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            font-size: 1.1rem;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            z-index: 10;
-            margin-bottom: 0;
-            padding: 0;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        }
-        .carousel-btn:active {
-            transform: translateY(-50%) scale(0.95);
-        }
-        .carousel-btn.prev {
-            left: 8px;
-        }
-        .carousel-btn.next {
-            right: 8px;
         }
         .carousel-indicators {
             display: flex;
@@ -313,7 +307,7 @@
 <body>
 
 <div class="card">
-    <h1>Guide Audio Touristique</h1>
+    <h1>🌍 Guide Audio Touristique</h1>
     
     <button id="listen-btn" onclick="startGuideGPS()">📍 Écouter le lieu actuel (GPS)</button>
     
@@ -365,14 +359,12 @@
 
     <div id="status">Choisissez une méthode pour démarrer.</div>
     
-    <!-- Carrousel interactif fonctionnel -->
+    <!-- Carrousel sans flèches -->
     <div id="carousel-container">
         <div class="carousel-wrapper">
-            <button class="carousel-btn prev" onclick="prevSlide()">❮</button>
             <div class="carousel-track-container">
                 <div id="carousel-track" class="carousel-track"></div>
             </div>
-            <button class="carousel-btn next" onclick="nextSlide()">❯</button>
         </div>
         <div id="carousel-indicators" class="carousel-indicators"></div>
     </div>
@@ -560,7 +552,6 @@
             const voyUrl = `https://fr.wikivoyage.org/w/api.php?action=query&prop=extracts&exintro=0&explaintext=1&titles=${encodeURIComponent(title)}&format=json&origin=*`;
             const voyPromise = fetch(voyUrl).then(r => r.json()).catch(() => null);
 
-            // Requête officielle des images de la galerie de la page Wikimedia Commons associée
             const commonsUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=images|pageimages&piprop=original&pageids=${pageId}&format=json&origin=*`;
             const commonsPromise = fetch(commonsUrl).then(r => r.json()).catch(() => null);
 
@@ -574,15 +565,12 @@
 
             let imageUrls = [];
 
-            // 1. Image principale si présente
             if (commonsData && commonsData.query && commonsData.query.pages[pageId] && commonsData.query.pages[pageId].original) {
                 imageUrls.push(commonsData.query.pages[pageId].original.source);
             }
 
-            // 2. Extraction des autres fichiers images valides de l'article
             if (commonsData && commonsData.query && commonsData.query.pages[pageId] && commonsData.query.pages[pageId].images) {
                 const imgList = commonsData.query.pages[pageId].images;
-                // On récupère les URLs des fichiers image de manière asynchrone par lots
                 for (let imgObj of imgList) {
                     let imgTitle = imgObj.title;
                     if (imgTitle && /\.(jpg|jpeg|png)$/i.test(imgTitle) && !imgTitle.toLowerCase().includes('logo') && !imgTitle.toLowerCase().includes('icon') && !imgTitle.toLowerCase().includes('map')) {
@@ -598,15 +586,12 @@
                                     }
                                 }
                             }
-                        } catch (e) {
-                            // Ignorer les erreurs individuelles de fichiers
-                        }
+                        } catch (e) {}
                     }
-                    if (imageUrls.length >= 10) break; // Limiter à 10 images max
+                    if (imageUrls.length >= 10) break;
                 }
             }
 
-            // Fallback si la liste Commons est vide : extraction HTML directe
             if (imageUrls.length === 0 && parseData && parseData.parse && parseData.parse.text) {
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = parseData.parse.text['*'];
@@ -732,7 +717,6 @@
         }
     }
 
-    // Navigation manuelle et automatique du carrousel
     function goToSlide(index) {
         if (carouselImages.length === 0) return;
         currentSlideIndex = (index + carouselImages.length) % carouselImages.length;
@@ -744,14 +728,6 @@
         for (let i = 0; i < indicators.length; i++) {
             indicators[i].classList.toggle('active', i === currentSlideIndex);
         }
-    }
-
-    function nextSlide() {
-        goToSlide(currentSlideIndex + 1);
-    }
-
-    function prevSlide() {
-        goToSlide(currentSlideIndex - 1);
     }
 
     function loadMoreDetails() {
