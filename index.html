@@ -182,20 +182,26 @@
             margin-top: 4px;
         }
         
-        /* Carrousel d'illustrations filtrées */
+        /* Carrousel interactif avec flèches de navigation */
         #carousel-container {
             margin: 12px 0;
             display: none;
             position: relative;
         }
+        .carousel-wrapper {
+            position: relative;
+            width: 100%;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            border: 1px solid #3a506b;
+            background: #0b132b;
+        }
         .carousel-track-container {
             width: 100%;
             max-height: 200px;
-            overflow-x: hidden;
+            overflow: hidden;
             display: flex;
-            border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
-            border: 1px solid #3a506b;
         }
         .carousel-track {
             display: flex;
@@ -213,7 +219,36 @@
             width: 100%;
             max-height: 200px;
             object-fit: cover;
-            border-radius: 9px;
+        }
+        .carousel-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(11, 19, 43, 0.7);
+            color: #ffd166;
+            border: 1px solid #3a506b;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            font-size: 1.1rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 10;
+            margin-bottom: 0;
+            padding: 0;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        .carousel-btn:active {
+            transform: translateY(-50%) scale(0.95);
+        }
+        .carousel-btn.prev {
+            left: 8px;
+        }
+        .carousel-btn.next {
+            right: 8px;
         }
         .carousel-indicators {
             display: flex;
@@ -226,6 +261,7 @@
             height: 6px;
             border-radius: 50%;
             background-color: #3a506b;
+            cursor: pointer;
         }
         .indicator.active {
             background-color: #ffd166;
@@ -329,10 +365,14 @@
 
     <div id="status">Choisissez une méthode pour démarrer.</div>
     
-    <!-- Carrousel d'illustrations photos strictes -->
+    <!-- Carrousel avec flèches de navigation manuelle -->
     <div id="carousel-container">
-        <div class="carousel-track-container">
-            <div id="carousel-track" class="carousel-track"></div>
+        <div class="carousel-wrapper">
+            <button class="carousel-btn prev" onclick="prevSlide()">❮</button>
+            <div class="carousel-track-container">
+                <div id="carousel-track" class="carousel-track"></div>
+            </div>
+            <button class="carousel-btn next" onclick="nextSlide()">❯</button>
         </div>
         <div id="carousel-indicators" class="carousel-indicators"></div>
     </div>
@@ -488,9 +528,8 @@
     async function fetchFullArticleBySearch(queryText) {
         try {
             const searchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(queryText)}&srlimit=1&format=json&origin=*`;
-            const res = await searchUrl;
-            const resFetch = await fetch(searchUrl);
-            const data = await resFetch.json();
+            const res = await fetch(searchUrl);
+            const data = await res.json();
 
             if (!data.query || !data.query.search || data.query.search.length === 0) {
                 setStatus(`Aucun résultat trouvé pour "${queryText}".`);
@@ -521,7 +560,11 @@
             const voyUrl = `https://fr.wikivoyage.org/w/api.php?action=query&prop=extracts&exintro=0&explaintext=1&titles=${encodeURIComponent(title)}&format=json&origin=*`;
             const voyPromise = fetch(voyUrl).then(r => r.json()).catch(() => null);
 
-            const [parseData, voyData] = await Promise.all([parsePromise, voyPromise]);
+            // Requête ciblée pour récupérer les URLs haute résolution des images de la page
+            const imagesMetaUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=pageimages|images&piprop=original&pageids=${pageId}&format=json&origin=*`;
+            const imagesMetaPromise = fetch(imagesMetaUrl).then(r => r.json()).catch(() => null);
+
+            const [parseData, voyData, imagesMetaData] = await Promise.all([parsePromise, voyPromise, imagesMetaPromise]);
 
             const wikiUrl = `https://fr.wikipedia.org/?curid=${pageId}`;
             const linkElement = document.getElementById('wikipedia-link');
@@ -529,9 +572,14 @@
             linkElement.innerText = `📖 Lire "${currentTitle}" sur Wikipédia`;
             document.getElementById('wikipedia-link-container').style.display = 'block';
 
-            // --- FILTRE STRICT ANTI-ICÔNES ET ANTI-UI ---
             let imageUrls = [];
 
+            // 1. Image principale de la page en premier choix si disponible
+            if (imagesMetaData && imagesMetaData.query && imagesMetaData.query.pages[pageId] && imagesMetaData.query.pages[pageId].original) {
+                imageUrls.push(imagesMetaData.query.pages[pageId].original.source);
+            }
+
+            // 2. Extraction des autres photos d'illustration valides du contenu HTML
             if (parseData && parseData.parse && parseData.parse.text) {
                 const htmlContent = parseData.parse.text['*'];
                 const tempDiv = document.createElement('div');
@@ -541,10 +589,8 @@
                     let src = img.getAttribute('src');
                     if (src) {
                         if (src.startsWith('//')) src = 'https:' + src;
-                        
                         let lowerSrc = src.toLowerCase();
                         
-                        // Liste exhaustive des mots-clés d'exclusion pour ne garder que de vraies photos d'illustration
                         const forbiddenKeywords = [
                             'logo', 'icon', 'button', 'ui', 'symbol', 'btn', 'flag', 'crest', 
                             'map', 'plan', 'chart', 'diagram', 'ambox', 'wiktionary', 'commons-logo', 
@@ -552,8 +598,6 @@
                         ];
 
                         let isForbidden = forbiddenKeywords.some(keyword => lowerSrc.includes(keyword));
-
-                        // S'assurer également que l'image est bien au format photo standard (.jpg, .jpeg, .png)
                         let isPhotoFormat = /\.(jpg|jpeg|png)$/i.test(src);
 
                         if (isPhotoFormat && !isForbidden && !imageUrls.includes(src)) {
@@ -563,7 +607,7 @@
                 });
             }
 
-            carouselImages = imageUrls.slice(0, 10); // Limité à 10 illustrations max
+            carouselImages = imageUrls.slice(0, 10); // Max 10 images
 
             if (carouselImages.length > 0) {
                 const track = document.getElementById('carousel-track');
@@ -575,17 +619,18 @@
                 carouselImages.forEach((url, index) => {
                     const slide = document.createElement('div');
                     slide.className = 'carousel-slide';
-                    slide.innerHTML = `<img src="${url}" alt="Illustration photo ${index + 1}">`;
+                    slide.innerHTML = `<img src="${url}" alt="Photo ${index + 1}">`;
                     track.appendChild(slide);
 
                     const dot = document.createElement('div');
                     dot.className = `indicator ${index === 0 ? 'active' : ''}`;
+                    dot.onclick = () => goToSlide(index);
                     indicators.appendChild(dot);
                 });
 
                 currentSlideIndex = 0;
                 document.getElementById('carousel-container').style.display = 'block';
-                document.getElementById('sources-badge').innerText = "📚 Synthèse globale avec galerie photo authentique";
+                document.getElementById('sources-badge').innerText = "📚 Synthèse globale avec galerie photo interactive";
             } else {
                 document.getElementById('sources-badge').innerText = "📚 Synthèse globale de l'article complet";
             }
@@ -673,9 +718,10 @@
         }
     }
 
+    // Fonctions de navigation manuelle du carrousel
     function goToSlide(index) {
         if (carouselImages.length === 0) return;
-        currentSlideIndex = index % carouselImages.length;
+        currentSlideIndex = (index + carouselImages.length) % carouselImages.length;
         
         const track = document.getElementById('carousel-track');
         track.style.transform = `translateX(-${currentSlideIndex * 100}%)`;
@@ -684,6 +730,14 @@
         for (let i = 0; i < indicators.length; i++) {
             indicators[i].classList.toggle('active', i === currentSlideIndex);
         }
+    }
+
+    function nextSlide() {
+        goToSlide(currentSlideIndex + 1);
+    }
+
+    function prevSlide() {
+        goToSlide(currentSlideIndex - 1);
     }
 
     function loadMoreDetails() {
@@ -751,6 +805,7 @@
                 document.getElementById('progress-fill').style.width = progressPercent + '%';
                 document.getElementById('current-time').innerText = formatTime(Math.min(speechDurationMs, elapsed) / 1000);
 
+                // Synchronisation automatique (l'utilisateur peut aussi reprendre le contrôle manuel à tout moment)
                 if (carouselImages.length > 0) {
                     const targetSlide = Math.min(
                         carouselImages.length - 1, 
