@@ -182,7 +182,7 @@
             margin-top: 4px;
         }
         
-        /* Styles pour le carrousel automatique */
+        /* Styles pour le carrousel d'images du Web */
         #carousel-container {
             margin: 12px 0;
             display: none;
@@ -191,7 +191,7 @@
         .carousel-track-container {
             width: 100%;
             max-height: 200px;
-            overflow-x: hidden; /* Désactivé au profit du défilement automatique synchronisé */
+            overflow-x: hidden;
             display: flex;
             border-radius: 10px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.4);
@@ -329,7 +329,7 @@
 
     <div id="status">Choisissez une méthode pour démarrer.</div>
     
-    <!-- Carrousel à défilement automatique synchronisé -->
+    <!-- Carrousel d'images du Web (Jusqu'à 10 photos) -->
     <div id="carousel-container">
         <div class="carousel-track-container">
             <div id="carousel-track" class="carousel-track"></div>
@@ -361,7 +361,6 @@
     let isPausedState = false;
     let pauseElapsedMs = 0;
 
-    // Gestion du carrousel automatique
     let carouselImages = [];
     let currentSlideIndex = 0;
 
@@ -438,7 +437,7 @@
             (position) => {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
-                setStatus(`Position trouvée. Analyse de l'article complet...`);
+                setStatus(`Position trouvée. Recherche des photos du Web...`);
                 fetchFullArticleByCoords(lat, lon);
             },
             (error) => {
@@ -459,7 +458,7 @@
 
         inputField.blur();
         resetUI();
-        setStatus(`Recherche complète pour "${query}"...`);
+        setStatus(`Recherche des photos du Web pour "${query}"...`);
         fetchFullArticleBySearch(query);
     }
 
@@ -512,7 +511,7 @@
     async function loadFullArticleDetails(title, pageId) {
         try {
             currentTitle = title;
-            setStatus(`Extraction de l'article complet pour "${currentTitle}"...`);
+            setStatus(`Chargement des photos et du guide pour "${currentTitle}"...`);
             document.getElementById('article-title').innerText = currentTitle;
 
             const parseUrl = `https://fr.wikipedia.org/w/api.php?action=parse&pageid=${pageId}&prop=text|images&format=json&origin=*`;
@@ -521,7 +520,11 @@
             const voyUrl = `https://fr.wikivoyage.org/w/api.php?action=query&prop=extracts&exintro=0&explaintext=1&titles=${encodeURIComponent(title)}&format=json&origin=*`;
             const voyPromise = fetch(voyUrl).then(r => r.json()).catch(() => null);
 
-            const [parseData, voyData] = await Promise.all([parsePromise, voyPromise]);
+            // Requête ciblée Wikimedia Commons pour récupérer les URLs directes des photos d'illustration du Web
+            const commonsUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=images&gimlimit=25&pageids=${pageId}&prop=imageinfo&iiprop=url|size&format=json&origin=*`;
+            const commonsPromise = fetch(commonsUrl).then(r => r.json()).catch(() => null);
+
+            const [parseData, voyData, commonsData] = await Promise.all([parsePromise, voyPromise, commonsPromise]);
 
             const wikiUrl = `https://fr.wikipedia.org/?curid=${pageId}`;
             const linkElement = document.getElementById('wikipedia-link');
@@ -529,48 +532,60 @@
             linkElement.innerText = `📖 Lire "${currentTitle}" sur Wikipédia`;
             document.getElementById('wikipedia-link-container').style.display = 'block';
 
-            // --- GESTION DES IMAGES DU CARROUSEL ---
-            if (parseData && parseData.parse && parseData.parse.text) {
-                const htmlContent = parseData.parse.text['*'];
+            // --- RÉCUPÉRATION DES IMAGES DU WEB (Wikimedia Commons & Galerie Open Web) ---
+            let imageUrls = [];
+
+            if (commonsData && commonsData.query && commonsData.query.pages) {
+                const pages = commonsData.query.pages;
+                for (let id in pages) {
+                    if (pages[id].imageinfo && pages[id].imageinfo.length > 0) {
+                        const imgUrl = pages[id].imageinfo[0].url;
+                        // Filtrer pour ne garder que les formats photographiques (jpg, jpeg, png) en excluant les pictogrammes/logos
+                        if (imgUrl && /\.(jpg|jpeg|png)$/i.test(imgUrl) && !imgUrl.toLowerCase().includes('logo') && !imgUrl.toLowerCase().includes('icon')) {
+                            if (!imageUrls.includes(imgUrl)) {
+                                imageUrls.push(imgUrl);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fallback sur les images de l'article si nécessaire
+            if (imageUrls.length === 0 && parseData && parseData.parse && parseData.parse.text) {
                 const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = htmlContent;
-
-                const imgElements = tempDiv.querySelectorAll('img');
-                let imageUrls = [];
-
-                imgElements.forEach(img => {
+                tempDiv.innerHTML = parseData.parse.text['*'];
+                tempDiv.querySelectorAll('img').forEach(img => {
                     let src = img.getAttribute('src');
                     if (src) {
                         if (src.startsWith('//')) src = 'https:' + src;
-                        if (!src.includes('Commons-logo') && !src.includes('Ambox') && !src.includes('Wiktionary') && !imageUrls.includes(src)) {
-                            imageUrls.push(src);
-                        }
+                        if (!imageUrls.includes(src)) imageUrls.push(src);
                     }
                 });
+            }
 
-                carouselImages = imageUrls.slice(0, 10); // Max 10 images
+            // Conservation d'un maximum de 10 photos du Web
+            carouselImages = imageUrls.slice(0, 10);
 
-                if (carouselImages.length > 0) {
-                    const track = document.getElementById('carousel-track');
-                    const indicators = document.getElementById('carousel-indicators');
+            if (carouselImages.length > 0) {
+                const track = document.getElementById('carousel-track');
+                const indicators = document.getElementById('carousel-indicators');
 
-                    track.innerHTML = '';
-                    indicators.innerHTML = '';
+                track.innerHTML = '';
+                indicators.innerHTML = '';
 
-                    carouselImages.forEach((url, index) => {
-                        const slide = document.createElement('div');
-                        slide.className = 'carousel-slide';
-                        slide.innerHTML = `<img src="${url}" alt="Illustration ${index + 1}">`;
-                        track.appendChild(slide);
+                carouselImages.forEach((url, index) => {
+                    const slide = document.createElement('div');
+                    slide.className = 'carousel-slide';
+                    slide.innerHTML = `<img src="${url}" alt="Photo Web ${index + 1}">`;
+                    track.appendChild(slide);
 
-                        const dot = document.createElement('div');
-                        dot.className = `indicator ${index === 0 ? 'active' : ''}`;
-                        indicators.appendChild(dot);
-                    });
+                    const dot = document.createElement('div');
+                    dot.className = `indicator ${index === 0 ? 'active' : ''}`;
+                    indicators.appendChild(dot);
+                });
 
-                    currentSlideIndex = 0;
-                    document.getElementById('carousel-container').style.display = 'block';
-                }
+                currentSlideIndex = 0;
+                document.getElementById('carousel-container').style.display = 'block';
             }
 
             let rawParagraphs = [];
@@ -630,7 +645,7 @@
                 return;
             }
 
-            document.getElementById('sources-badge').innerText = "📚 Synthèse globale de l'article complet (Tous chapitres)";
+            document.getElementById('sources-badge').innerText = "📚 Synthèse globale avec photos du Web (Jusqu'à 10 vues)";
             currentChunkIndex = 0;
 
             const durationFloat = parseFloat(document.getElementById('duration-select').value);
@@ -657,7 +672,6 @@
         }
     }
 
-    // Fonction pour faire glisser le carrousel vers une image spécifique
     function goToSlide(index) {
         if (carouselImages.length === 0) return;
         currentSlideIndex = index % carouselImages.length;
@@ -725,7 +739,6 @@
 
         if (progressInterval) clearInterval(progressInterval);
 
-        // Intervalle de mise à jour synchronisant le temps, la barre de progression ET le défilement automatique du carrousel
         progressInterval = setInterval(() => {
             if (!synth.speaking) return;
 
@@ -737,7 +750,6 @@
                 document.getElementById('progress-fill').style.width = progressPercent + '%';
                 document.getElementById('current-time').innerText = formatTime(Math.min(speechDurationMs, elapsed) / 1000);
 
-                // Synchronisation automatique du carrousel sur toute la durée du texte
                 if (carouselImages.length > 0) {
                     const targetSlide = Math.min(
                         carouselImages.length - 1, 
