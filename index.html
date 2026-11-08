@@ -182,7 +182,7 @@
             margin-top: 4px;
         }
         
-        /* Carrousel d'images */
+        /* Carrousel d'images synchronisé */
         #carousel-container {
             margin: 12px 0;
             display: none;
@@ -229,20 +229,6 @@
         }
         .indicator.active {
             background-color: #ffd166;
-        }
-
-        /* Image unique de secours (fallback Wikipédia) */
-        #single-image-container {
-            margin: 12px 0;
-            display: none;
-        }
-        #single-image {
-            width: 100%;
-            max-height: 200px;
-            object-fit: cover;
-            border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
-            border: 1px solid #3a506b;
         }
 
         #article-title {
@@ -343,17 +329,12 @@
 
     <div id="status">Choisissez une méthode pour démarrer.</div>
     
-    <!-- Carrousel (Premier choix : API d'images en ligne) -->
+    <!-- Carrousel d'illustrations synchronisé -->
     <div id="carousel-container">
         <div class="carousel-track-container">
             <div id="carousel-track" class="carousel-track"></div>
         </div>
         <div id="carousel-indicators" class="carousel-indicators"></div>
-    </div>
-
-    <!-- Image unique de secours (Second choix : Wikipédia) -->
-    <div id="single-image-container">
-        <img id="single-image" src="" alt="Illustration Wikipédia">
     </div>
     
     <div id="article-title"></div>
@@ -426,8 +407,6 @@
         document.getElementById('carousel-container').style.display = 'none';
         document.getElementById('carousel-track').innerHTML = '';
         document.getElementById('carousel-indicators').innerHTML = '';
-        document.getElementById('single-image-container').style.display = 'none';
-        document.getElementById('single-image').src = '';
         document.getElementById('wikipedia-link-container').style.display = 'none';
         document.getElementById('more-btn').style.display = 'none';
         document.getElementById('progress-container').style.display = 'none';
@@ -458,7 +437,7 @@
             (position) => {
                 const lat = position.coords.latitude;
                 const lon = position.coords.longitude;
-                setStatus(`Position trouvée. Recherche des photos...`);
+                setStatus(`Position trouvée. Analyse complète...`);
                 fetchFullArticleByCoords(lat, lon);
             },
             (error) => {
@@ -479,7 +458,7 @@
 
         inputField.blur();
         resetUI();
-        setStatus(`Recherche des photos pour "${query}"...`);
+        setStatus(`Recherche pour "${query}"...`);
         fetchFullArticleBySearch(query);
     }
 
@@ -532,7 +511,7 @@
     async function loadFullArticleDetails(title, pageId) {
         try {
             currentTitle = title;
-            setStatus(`Chargement des photos et du guide pour "${currentTitle}"...`);
+            setStatus(`Chargement des illustrations et du guide pour "${currentTitle}"...`);
             document.getElementById('article-title').innerText = currentTitle;
 
             const parseUrl = `https://fr.wikipedia.org/w/api.php?action=parse&pageid=${pageId}&prop=text|images&format=json&origin=*`;
@@ -541,15 +520,7 @@
             const voyUrl = `https://fr.wikivoyage.org/w/api.php?action=query&prop=extracts&exintro=0&explaintext=1&titles=${encodeURIComponent(title)}&format=json&origin=*`;
             const voyPromise = fetch(voyUrl).then(r => r.json()).catch(() => null);
 
-            // PREMIER CHOIX : API d'image en ligne (Recherche web ouverte Wikimedia / Openverse compatible CORS)
-            const webImagesUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(title + " landmark photo")} loc:en&gsrlimit=15&prop=imageinfo&iiprop=url&format=json&origin=*`;
-            const webImagesPromise = fetch(webImagesUrl).then(r => r.json()).catch(() => null);
-
-            // SECONDE SOURCE (Secours) : Image principale unique de l'article Wikipédia
-            const wikiSingleImgUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=pageimages&piprop=original&pageids=${pageId}&format=json&origin=*`;
-            const wikiSingleImgPromise = fetch(wikiSingleImgUrl).then(r => r.json()).catch(() => null);
-
-            const [parseData, voyData, webImagesData, wikiSingleImgData] = await Promise.all([parsePromise, voyPromise, webImagesPromise, wikiSingleImgPromise]);
+            const [parseData, voyData] = await Promise.all([parsePromise, voyPromise]);
 
             const wikiUrl = `https://fr.wikipedia.org/?curid=${pageId}`;
             const linkElement = document.getElementById('wikipedia-link');
@@ -557,27 +528,31 @@
             linkElement.innerText = `📖 Lire "${currentTitle}" sur Wikipédia`;
             document.getElementById('wikipedia-link-container').style.display = 'block';
 
-            // --- TENTATIVE 1 : API d'image en ligne (Carrousel) ---
+            // --- EXTRACTION FIABLE DE LA GALERIE D'ILLUSTRATIONS DE L'ARTICLE ---
             let imageUrls = [];
 
-            if (webImagesData && webImagesData.query && webImagesData.query.pages) {
-                const pages = webImagesData.query.pages;
-                for (let id in pages) {
-                    if (pages[id].imageinfo && pages[id].imageinfo.length > 0) {
-                        const imgUrl = pages[id].imageinfo[0].url;
-                        if (imgUrl && /\.(jpg|jpeg|png)$/i.test(imgUrl) && !imgUrl.toLowerCase().includes('logo') && !imgUrl.toLowerCase().includes('icon') && !imgUrl.toLowerCase().includes('map')) {
-                            if (!imageUrls.includes(imgUrl)) {
-                                imageUrls.push(imgUrl);
+            if (parseData && parseData.parse && parseData.parse.text) {
+                const htmlContent = parseData.parse.text['*'];
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = htmlContent;
+
+                tempDiv.querySelectorAll('img').forEach(img => {
+                    let src = img.getAttribute('src');
+                    if (src) {
+                        if (src.startsWith('//')) src = 'https:' + src;
+                        // Filtrer les logos, icônes ou pictogrammes pour ne garder que les photos
+                        if (!src.toLowerCase().includes('logo') && !src.toLowerCase().includes('icon') && !src.toLowerCase().includes('ambox') && !src.toLowerCase().includes('wiktionary')) {
+                            if (!imageUrls.includes(src)) {
+                                imageUrls.push(src);
                             }
                         }
                     }
-                }
+                });
             }
 
-            carouselImages = imageUrls.slice(0, 10);
+            carouselImages = imageUrls.slice(0, 10); // Limité à 10 images max
 
             if (carouselImages.length > 0) {
-                // Succès de l'API d'image en ligne : Affichage du carrousel
                 const track = document.getElementById('carousel-track');
                 const indicators = document.getElementById('carousel-indicators');
 
@@ -587,7 +562,7 @@
                 carouselImages.forEach((url, index) => {
                     const slide = document.createElement('div');
                     slide.className = 'carousel-slide';
-                    slide.innerHTML = `<img src="${url}" alt="Photo en ligne ${index + 1}">`;
+                    slide.innerHTML = `<img src="${url}" alt="Illustration ${index + 1}">`;
                     track.appendChild(slide);
 
                     const dot = document.createElement('div');
@@ -597,21 +572,9 @@
 
                 currentSlideIndex = 0;
                 document.getElementById('carousel-container').style.display = 'block';
-                document.getElementById('sources-badge').innerText = "📚 Synthèse globale avec images en ligne (Carrousel)";
+                document.getElementById('sources-badge').innerText = "📚 Synthèse globale avec galerie photo synchronisée";
             } else {
-                // --- TENTATIVE 2 (Secours) : Une seule image Wikipédia si l'API en ligne échoue ---
-                let fallbackImg = "";
-                if (wikiSingleImgData && wikiSingleImgData.query && wikiSingleImgData.query.pages[pageId] && wikiSingleImgData.query.pages[pageId].original) {
-                    fallbackImg = wikiSingleImgData.query.pages[pageId].original.source;
-                }
-
-                if (fallbackImg) {
-                    document.getElementById('single-image').src = fallbackImg;
-                    document.getElementById('single-image-container').style.display = 'block';
-                    document.getElementById('sources-badge').innerText = "📚 Synthèse globale (Image unique de secours Wikipédia)";
-                } else {
-                    document.getElementById('sources-badge').innerText = "📚 Synthèse globale de l'article complet";
-                }
+                document.getElementById('sources-badge').innerText = "📚 Synthèse globale de l'article complet";
             }
 
             let rawParagraphs = [];
