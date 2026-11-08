@@ -182,7 +182,7 @@
             margin-top: 4px;
         }
         
-        /* Carrousel d'images avec navigation manuelle */
+        /* Carrousel fonctionnel et fluide avec flèches */
         #carousel-container {
             margin: 12px 0;
             display: none;
@@ -224,7 +224,7 @@
             position: absolute;
             top: 50%;
             transform: translateY(-50%);
-            background: rgba(11, 19, 43, 0.7);
+            background: rgba(11, 19, 43, 0.8);
             color: #ffd166;
             border: 1px solid #3a506b;
             width: 36px;
@@ -365,7 +365,7 @@
 
     <div id="status">Choisissez une méthode pour démarrer.</div>
     
-    <!-- Carrousel avec flèches de navigation -->
+    <!-- Carrousel interactif fonctionnel -->
     <div id="carousel-container">
         <div class="carousel-wrapper">
             <button class="carousel-btn prev" onclick="prevSlide()">❮</button>
@@ -560,11 +560,11 @@
             const voyUrl = `https://fr.wikivoyage.org/w/api.php?action=query&prop=extracts&exintro=0&explaintext=1&titles=${encodeURIComponent(title)}&format=json&origin=*`;
             const voyPromise = fetch(voyUrl).then(r => r.json()).catch(() => null);
 
-            // Requête pour récupérer l'image principale (illustration phare) de l'article
-            const mainImgUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=pageimages&piprop=original&pageids=${pageId}&format=json&origin=*`;
-            const mainImgPromise = fetch(mainImgUrl).then(r => r.json()).catch(() => null);
+            // Requête officielle des images de la galerie de la page Wikimedia Commons associée
+            const commonsUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=images|pageimages&piprop=original&pageids=${pageId}&format=json&origin=*`;
+            const commonsPromise = fetch(commonsUrl).then(r => r.json()).catch(() => null);
 
-            const [parseData, voyData, mainImgData] = await Promise.all([parsePromise, voyPromise, mainImgPromise]);
+            const [parseData, voyData, commonsData] = await Promise.all([parsePromise, voyPromise, commonsPromise]);
 
             const wikiUrl = `https://fr.wikipedia.org/?curid=${pageId}`;
             const linkElement = document.getElementById('wikipedia-link');
@@ -574,43 +574,54 @@
 
             let imageUrls = [];
 
-            // 1. COMMENCER PAR L'IMAGE PRINCIPALE D'ILLUSTRATION DE L'ARTICLE
-            if (mainImgData && mainImgData.query && mainImgData.query.pages[pageId] && mainImgData.query.pages[pageId].original) {
-                const mainSrc = mainImgData.query.pages[pageId].original.source;
-                if (mainSrc) {
-                    imageUrls.push(mainSrc);
+            // 1. Image principale si présente
+            if (commonsData && commonsData.query && commonsData.query.pages[pageId] && commonsData.query.pages[pageId].original) {
+                imageUrls.push(commonsData.query.pages[pageId].original.source);
+            }
+
+            // 2. Extraction des autres fichiers images valides de l'article
+            if (commonsData && commonsData.query && commonsData.query.pages[pageId] && commonsData.query.pages[pageId].images) {
+                const imgList = commonsData.query.pages[pageId].images;
+                // On récupère les URLs des fichiers image de manière asynchrone par lots
+                for (let imgObj of imgList) {
+                    let imgTitle = imgObj.title;
+                    if (imgTitle && /\.(jpg|jpeg|png)$/i.test(imgTitle) && !imgTitle.toLowerCase().includes('logo') && !imgTitle.toLowerCase().includes('icon') && !imgTitle.toLowerCase().includes('map')) {
+                        try {
+                            let infoRes = await fetch(`https://fr.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(imgTitle)}&prop=imageinfo&iiprop=url&format=json&origin=*`);
+                            let infoData = await infoRes.json();
+                            let pages = infoData.query.pages;
+                            for (let p in pages) {
+                                if (pages[p].imageinfo && pages[p].imageinfo[0].url) {
+                                    let directUrl = pages[p].imageinfo[0].url;
+                                    if (!imageUrls.includes(directUrl)) {
+                                        imageUrls.push(directUrl);
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            // Ignorer les erreurs individuelles de fichiers
+                        }
+                    }
+                    if (imageUrls.length >= 10) break; // Limiter à 10 images max
                 }
             }
 
-            // 2. AJOUTER LES AUTRES IMAGES D'ILLUSTRATION DE L'ARTICLE (avec filtre strict anti-icônes)
-            if (parseData && parseData.parse && parseData.parse.text) {
-                const htmlContent = parseData.parse.text['*'];
+            // Fallback si la liste Commons est vide : extraction HTML directe
+            if (imageUrls.length === 0 && parseData && parseData.parse && parseData.parse.text) {
                 const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = htmlContent;
-
+                tempDiv.innerHTML = parseData.parse.text['*'];
                 tempDiv.querySelectorAll('img').forEach(img => {
                     let src = img.getAttribute('src');
                     if (src) {
                         if (src.startsWith('//')) src = 'https:' + src;
-                        let lowerSrc = src.toLowerCase();
-                        
-                        const forbiddenKeywords = [
-                            'logo', 'icon', 'button', 'ui', 'symbol', 'btn', 'flag', 'crest', 
-                            'map', 'plan', 'chart', 'diagram', 'ambox', 'wiktionary', 'commons-logo', 
-                            'stub', 'padlock', 'audio', 'speaker', 'search', 'magnifying', 'edit', 'pencil'
-                        ];
-
-                        let isForbidden = forbiddenKeywords.some(keyword => lowerSrc.includes(keyword));
-                        let isPhotoFormat = /\.(jpg|jpeg|png)$/i.test(src);
-
-                        if (isPhotoFormat && !isForbidden && !imageUrls.includes(src)) {
+                        if (!src.toLowerCase().includes('logo') && !src.toLowerCase().includes('icon') && !imageUrls.includes(src)) {
                             imageUrls.push(src);
                         }
                     }
                 });
             }
 
-            carouselImages = imageUrls.slice(0, 10); // Limité à 10 images max
+            carouselImages = imageUrls.slice(0, 10);
 
             if (carouselImages.length > 0) {
                 const track = document.getElementById('carousel-track');
@@ -622,7 +633,7 @@
                 carouselImages.forEach((url, index) => {
                     const slide = document.createElement('div');
                     slide.className = 'carousel-slide';
-                    slide.innerHTML = `<img src="${url}" alt="Photo ${index + 1}">`;
+                    slide.innerHTML = `<img src="${url}" alt="Illustration ${index + 1}">`;
                     track.appendChild(slide);
 
                     const dot = document.createElement('div');
@@ -721,7 +732,7 @@
         }
     }
 
-    // Fonctions de navigation manuelle du carrousel
+    // Navigation manuelle et automatique du carrousel
     function goToSlide(index) {
         if (carouselImages.length === 0) return;
         currentSlideIndex = (index + carouselImages.length) % carouselImages.length;
