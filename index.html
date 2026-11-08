@@ -277,8 +277,6 @@
         <button id="stop-btn" class="secondary-btn" onclick="stopAudio()" disabled>Arrêter</button>
     </div>
 
-    <div id="status">Choisissez une méthode pour démarrer.</div>
-    
     <div id="progress-container">
         <div class="progress-bar-bg">
             <div id="progress-fill" class="progress-bar-fill"></div>
@@ -288,6 +286,11 @@
             <span id="total-time">0:00</span>
         </div>
     </div>
+
+    <!-- EMPLACEMENT EXACT DEMANDÉ : Sous les boutons Pause/Arrêter et la barre de progression, et juste au-dessus du texte -->
+    <button id="more-btn" class="more-btn" onclick="loadMoreDetails()">📖 En savoir plus (+ de chapitres)</button>
+
+    <div id="status">Choisissez une méthode pour démarrer.</div>
     
     <div id="place-image-container">
         <img id="place-image" src="" alt="Photo du lieu identifié">
@@ -296,10 +299,7 @@
     <div id="article-title"></div>
     <div id="sources-badge"></div>
 
-    <!-- BOUTON "EN SAVOIR PLUS" POSITIONNÉ ICI : Sous les contrôles et au-dessus de la zone de texte défilante -->
-    <button id="more-btn" class="more-btn" onclick="loadMoreDetails()">📖 En savoir plus (+ de chapitres)</button>
-
-    <!-- Zone de texte avec barre de défilement -->
+    <!-- Zone de texte défilante -->
     <div id="output"></div>
 
     <div id="wikipedia-link-container">
@@ -411,36 +411,7 @@
 
         inputField.blur();
         resetUI();
-        setStatus(`Recherche complète pour "${query}"...`);
-        fetchFullArticleBySearch(query);
-    }
-
-    async function fetchFullArticleByCoords(lat, lon) {
-        try {
-            const wikiGeoUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=3000&gslimit=1&format=json&origin=*`;
-            const res = await fetch(wikiGeoUrl);
-            const data = await res.json();
-
-            if (!data.query || !data.query.geosearch || data.query.geosearch.length === 0) {
-                setStatus("Aucun lieu touristique trouvé à proximité.");
-                document.getElementById('listen-btn').disabled = false;
-                return;
-            }
-
-            const pageId = data.query.geosearch[0].pageid;
-            const title = data.query.geosearch[0].title;
-            loadFullArticleDetails(title, pageId);
-
-        } catch (err) {
-            console.error(err);
-            setStatus("Erreur lors de la recherche géographique.");
-            document.getElementById('listen-btn').disabled = false;
-        }
-    }
-
-    async function fetchFullArticleBySearch(queryText) {
-        try {
-            const searchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(queryText)}&srlimit=1&format=json&origin=*`;
+        setStatus(`Recherche complète pour "${query}"...`); fetchFullArticleBySearch(query); }  async function fetchFullArticleByCoords(lat, lon) { try { const wikiGeoUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=3000&gslimit=1&format=json&origin=*`; const res = await fetch(wikiGeoUrl); const data = await res.json();  if (!data.query \vert{}\vert{} !data.query.geosearch \vert{}\vert{} data.query.geosearch.length === 0) { setStatus("Aucun lieu touristique trouvé à proximité."); document.getElementById('listen-btn').disabled = false; return; }  const pageId = data.query.geosearch[0].pageid; const title = data.query.geosearch[0].title; loadFullArticleDetails(title, pageId);  } catch (err) { console.error(err); setStatus("Erreur lors de la recherche géographique."); document.getElementById('listen-btn').disabled = false; } }  async function fetchFullArticleBySearch(queryText) { try { const searchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(queryText)}&srlimit=1&format=json&origin=*`;
             const res = await fetch(searchUrl);
             const data = await res.json();
 
@@ -467,18 +438,12 @@
             setStatus(`Extraction de l'article complet pour "${currentTitle}"...`);
             document.getElementById('article-title').innerText = currentTitle;
 
-            const parseUrl = `https://fr.wikipedia.org/w/api.php?action=parse&pageid=${pageId}&prop=text&format=json&origin=*`;
-            const parsePromise = fetch(parseUrl).then(r => r.json());
-
-            const voyUrl = `https://fr.wikivoyage.org/w/api.php?action=query&prop=extracts&exintro=0&explaintext=1&titles=${encodeURIComponent(title)}&format=json&origin=*`;
+            const parseUrl = `https://fr.wikipedia.org/w/api.php?action=parse&pageid=${pageId}&prop=text&format=json&origin=*`; const parsePromise = fetch(parseUrl).then(r => r.json());  const voyUrl = `https://fr.wikivoyage.org/w/api.php?action=query&prop=extracts&exintro=0&explaintext=1&titles=${encodeURIComponent(title)}&format=json&origin=*`;
             const voyPromise = fetch(voyUrl).then(r => r.json()).catch(() => null);
 
             const [parseData, voyData] = await Promise.all([parsePromise, voyPromise]);
 
-            const wikiUrl = `https://fr.wikipedia.org/?curid=${pageId}`;
-            const linkElement = document.getElementById('wikipedia-link');
-            linkElement.href = wikiUrl;
-            linkElement.innerText = `📖 Lire "${currentTitle}" sur Wikipédia`;
+            const wikiUrl = `https://fr.wikipedia.org/?curid=${pageId}`; const linkElement = document.getElementById('wikipedia-link'); linkElement.href = wikiUrl; linkElement.innerText = `📖 Lire "${currentTitle}" sur Wikipédia`;
             document.getElementById('wikipedia-link-container').style.display = 'block';
 
             const imgUrl = `https://fr.wikipedia.org/w/api.php?action=query&prop=pageimages&piprop=original&pageids=${pageId}&format=json&origin=*`;
@@ -669,37 +634,4 @@
         }
     }
 
-    function pauseAudio() {
-        if (synth.speaking) {
-            if (synth.paused) {
-                synth.resume();
-                isPausedState = false;
-                speechStartTime = Date.now();
-                document.getElementById('pause-btn').innerText = "Pause";
-                setStatus("Lecture audio en cours...");
-            } else {
-                synth.pause();
-                isPausedState = true;
-                pauseElapsedMs += Date.now() - speechStartTime;
-                document.getElementById('pause-btn').innerText = "Reprendre";
-                setStatus("Lecture en pause.");
-            }
-        }
-    }
-
-    function stopAudio() {
-        if (synth.speaking || synth.paused) {
-            synth.cancel();
-            if (progressInterval) clearInterval(progressInterval);
-            setStatus("Lecture arrêtée.");
-            document.getElementById('progress-container').style.display = 'none';
-            document.getElementById('listen-btn').disabled = false;
-            document.getElementById('pause-btn').disabled = true;
-            document.getElementById('stop-btn').disabled = true;
-            document.getElementById('pause-btn').innerText = "Pause";
-        }
-    }
-</script>
-
-</body>
-</html>
+    function
