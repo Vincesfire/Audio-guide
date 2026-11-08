@@ -123,8 +123,8 @@
             background-color: #28385e;
             color: #ffd166;
             border: 1px solid #ffd166;
-            margin-top: 12px;
-            margin-bottom: 12px;
+            margin-top: 10px;
+            margin-bottom: 10px;
             display: none;
         }
         .config-control {
@@ -250,7 +250,6 @@
         <button id="search-btn" onclick="startGuideManual()">🔍</button>
     </div>
 
-    <!-- Sélecteur de durée mis à jour avec l'option 1 minute -->
     <div class="config-control">
         <label for="duration-select">Durée de l'explication :</label>
         <select id="duration-select">
@@ -297,8 +296,10 @@
     <div id="article-title"></div>
     <div id="sources-badge"></div>
 
+    <!-- BOUTON "EN SAVOIR PLUS" POSITIONNÉ ICI : Sous les contrôles et au-dessus de la zone de texte défilante -->
     <button id="more-btn" class="more-btn" onclick="loadMoreDetails()">📖 En savoir plus (+ de chapitres)</button>
 
+    <!-- Zone de texte avec barre de défilement -->
     <div id="output"></div>
 
     <div id="wikipedia-link-container">
