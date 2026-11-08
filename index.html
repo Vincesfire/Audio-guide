@@ -182,7 +182,7 @@
             margin-top: 4px;
         }
         
-        /* Carrousel d'images synchronisé */
+        /* Carrousel d'illustrations filtrées */
         #carousel-container {
             margin: 12px 0;
             display: none;
@@ -329,7 +329,7 @@
 
     <div id="status">Choisissez une méthode pour démarrer.</div>
     
-    <!-- Carrousel d'illustrations synchronisé -->
+    <!-- Carrousel d'illustrations photos strictes -->
     <div id="carousel-container">
         <div class="carousel-track-container">
             <div id="carousel-track" class="carousel-track"></div>
@@ -488,8 +488,9 @@
     async function fetchFullArticleBySearch(queryText) {
         try {
             const searchUrl = `https://fr.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(queryText)}&srlimit=1&format=json&origin=*`;
-            const res = await fetch(searchUrl);
-            const data = await res.json();
+            const res = await searchUrl;
+            const resFetch = await fetch(searchUrl);
+            const data = await resFetch.json();
 
             if (!data.query || !data.query.search || data.query.search.length === 0) {
                 setStatus(`Aucun résultat trouvé pour "${queryText}".`);
@@ -511,7 +512,7 @@
     async function loadFullArticleDetails(title, pageId) {
         try {
             currentTitle = title;
-            setStatus(`Chargement des illustrations et du guide pour "${currentTitle}"...`);
+            setStatus(`Chargement des photos et du guide pour "${currentTitle}"...`);
             document.getElementById('article-title').innerText = currentTitle;
 
             const parseUrl = `https://fr.wikipedia.org/w/api.php?action=parse&pageid=${pageId}&prop=text|images&format=json&origin=*`;
@@ -528,7 +529,7 @@
             linkElement.innerText = `📖 Lire "${currentTitle}" sur Wikipédia`;
             document.getElementById('wikipedia-link-container').style.display = 'block';
 
-            // --- EXTRACTION FIABLE DE LA GALERIE D'ILLUSTRATIONS DE L'ARTICLE ---
+            // --- FILTRE STRICT ANTI-ICÔNES ET ANTI-UI ---
             let imageUrls = [];
 
             if (parseData && parseData.parse && parseData.parse.text) {
@@ -540,17 +541,29 @@
                     let src = img.getAttribute('src');
                     if (src) {
                         if (src.startsWith('//')) src = 'https:' + src;
-                        // Filtrer les logos, icônes ou pictogrammes pour ne garder que les photos
-                        if (!src.toLowerCase().includes('logo') && !src.toLowerCase().includes('icon') && !src.toLowerCase().includes('ambox') && !src.toLowerCase().includes('wiktionary')) {
-                            if (!imageUrls.includes(src)) {
-                                imageUrls.push(src);
-                            }
+                        
+                        let lowerSrc = src.toLowerCase();
+                        
+                        // Liste exhaustive des mots-clés d'exclusion pour ne garder que de vraies photos d'illustration
+                        const forbiddenKeywords = [
+                            'logo', 'icon', 'button', 'ui', 'symbol', 'btn', 'flag', 'crest', 
+                            'map', 'plan', 'chart', 'diagram', 'ambox', 'wiktionary', 'commons-logo', 
+                            'stub', 'padlock', 'audio', 'speaker', 'search', 'magnifying', 'edit', 'pencil'
+                        ];
+
+                        let isForbidden = forbiddenKeywords.some(keyword => lowerSrc.includes(keyword));
+
+                        // S'assurer également que l'image est bien au format photo standard (.jpg, .jpeg, .png)
+                        let isPhotoFormat = /\.(jpg|jpeg|png)$/i.test(src);
+
+                        if (isPhotoFormat && !isForbidden && !imageUrls.includes(src)) {
+                            imageUrls.push(src);
                         }
                     }
                 });
             }
 
-            carouselImages = imageUrls.slice(0, 10); // Limité à 10 images max
+            carouselImages = imageUrls.slice(0, 10); // Limité à 10 illustrations max
 
             if (carouselImages.length > 0) {
                 const track = document.getElementById('carousel-track');
@@ -562,7 +575,7 @@
                 carouselImages.forEach((url, index) => {
                     const slide = document.createElement('div');
                     slide.className = 'carousel-slide';
-                    slide.innerHTML = `<img src="${url}" alt="Illustration ${index + 1}">`;
+                    slide.innerHTML = `<img src="${url}" alt="Illustration photo ${index + 1}">`;
                     track.appendChild(slide);
 
                     const dot = document.createElement('div');
@@ -572,7 +585,7 @@
 
                 currentSlideIndex = 0;
                 document.getElementById('carousel-container').style.display = 'block';
-                document.getElementById('sources-badge').innerText = "📚 Synthèse globale avec galerie photo synchronisée";
+                document.getElementById('sources-badge').innerText = "📚 Synthèse globale avec galerie photo authentique";
             } else {
                 document.getElementById('sources-badge').innerText = "📚 Synthèse globale de l'article complet";
             }
